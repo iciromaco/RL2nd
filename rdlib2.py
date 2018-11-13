@@ -564,15 +564,18 @@ def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
     # cpx,cpy → ４つの制御点、bezresX,bezresY ベジエ曲線の定義式
     # tpara 制御点
 
-#  (14-2) ４次ベジエフィッティング
-def fitBezierCurve４(points,precPara=0.01,mode=3, debugmode=False):
-    # mode = 3：両端固定、　mode =4 : 下のみ固定, mode=5:  全制御点自由
+#  (14-2) N次ベジエフィッティング
+def fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
+    # order 次数、mode:2 両端点固定、２以外の時は両端点もフリー
     # ベジエ曲線を定義するのに使うシンボルの宣言
-    P = [Symbol('P' + str(i)) for i in range(5)]
-    px,py =var('px:5'),var('py:5')
-    for i in range(5):
+    P = [Symbol('P' + str(i)) for i in range(N+1)]
+    px = [var('px'+str(i)) for i in range(N+1)]
+    py = [var('py'+str(i)) for i in range(N+1)]
+    dx_ = [var('dx_'+str(i)) for i in range(N+1)]
+    dy_ = [var('dy_'+sstr(i)) for i in range(N+1)]
+    
+    for i in range(N+1):
         P[i] = Matrix([px[i],py[i]]) 
-    t = symbols("t")
     
     # いわゆる自乗誤差の一般式
     s,t= symbols('s,t')
@@ -582,9 +585,11 @@ def fitBezierCurve４(points,precPara=0.01,mode=3, debugmode=False):
         return sum([loss1.subs([(s,a),(t,b)]) for (a,b) in zip(listA,listB)])/2
     
     v = var('v')
-    # ４次のベジエ曲線の定義式制御点 P0~P3 とパラメータ　　t　の関数として定義
+    # N次のベジエ曲線の定義式制御点 P0~PN とパラメータ　　t　の関数として定義
     v = 1-t
-    bez4 = v**4*P[0] + 4*v**3*t*P[1] + 6*v**2*t**2*P[2] + 4*v*t**3*P[3]+t**4*P[4]
+    bezN = Matrix([0,0])
+    for i in range(0,N+1):
+        bezN = bezN + binomial(N,i)*v**(N-i)*t**i*P[i]
     
     # 初期の推定パラメータの決定
     ## サンプル点間の差分を求める
@@ -603,7 +608,7 @@ def fitBezierCurve４(points,precPara=0.01,mode=3, debugmode=False):
     def refineTpara(pl,linefunc):
         (funcX,funcY) = linefunc # funcX,funcY は t の関数
         # 各サンプル点に最も近い曲線上の点のパラメータ t を求める。
-        trange = np.arange(-0.1,1.1,0.01) # 推定範囲は -0.1 〜　１．１
+        trange = np.arange(-0.1,1.1,0.005) # 推定範囲は -0.1 〜　１．１
         onpoints = [[s,funcX.subs(t,s),funcY.subs(t,s)] for s in trange] # 曲線上の点
         tpara = np.zeros(len(pl),np.float32) # 新しい 推定 t パラメータのリスト用の変数のアロケート
         refineTparaR(pl,tpara,0,len(pl),0,len(onpoints),onpoints)
@@ -623,83 +628,70 @@ def fitBezierCurve４(points,precPara=0.01,mode=3, debugmode=False):
     #  探索範囲内での対応づけ再帰関数
     # pl 点列、(stt,end) 推定対象範囲（番号）, (smin,smax) パラメータの探索範囲         
     def refineTparaR(pl,tpara,stt,end,smin,smax,onpoints):
-        if stt >end:
-            return 
-        else:
-            nmid = int((end+stt)/2) # 探索対象の中央のデータを抜き出す
-            px,py = points[nmid] # 中央のデータの座標
-            smin1, smax1 = srange(nmid,stt,end,smin,smax)
-            differ = onpoints[smin1:smax1].copy() 
-            differ = differ - np.array([0.0,px,py]) # 差分の配列
-            distance = [x*x+y*y for _t,x,y in differ] # 自乗誤差の配列
-            nearest_i = smin1+np.argmin(distance) # 誤差最小のインデックス
-            tpara[nmid] = onpoints[nearest_i][0] # 中央点のパラメータが決定
-            if nmid-stt >= 1 : # 左にまだ未処理の点があるなら処理する
-                refineTparaR(pl,tpara, stt,nmid,smin,nearest_i,onpoints)
-            if end-(nmid+1) >=1 : # 右にまだ未処理の点があるなら処理する
-                refineTparaR(pl,tpara,nmid+1,end,nearest_i+1,smax,onpoints) 
+        nmid = int((end+stt-1)/2) # 探索対象の中央のデータを抜き出す
+        px,py = points[nmid] # 中央のデータの座標
+        smin1, smax1 = srange(nmid,stt,end,smin,smax) # サーチ範囲を決める
+        zahyo = (np.array(onpoints[smin1:smax1]).copy())[:,1:] # onpoints リストの座標部分のみ取り出し
+        differ = zahyo - np.array([px,py]) # 差分の配列
+        distance = [x*x+y*y for x,y in differ] # 自乗誤差の配列
+        nearest_i = smin1+np.argmin(distance) # 誤差最小のインデックス
+        if smax-nearest_i < end-nmid: # nmid より後の割り当てるべき点の数が、nearest_i より後の割り当て可能なパラメータ数より多くなる場合
+            nearest_i -= (end-nmid)-(smax-nearest_i) # 足らない分選ぶパラメータをシフト
+        if nearest_i - stt < nmid-stt:
+            nearest_i += (nmid-stt)-(nearest_i-stt)
+        tpara[nmid] = onpoints[nearest_i][0] # 中央点のパラメータが決定
+        if nmid-stt >= 1 : # 左にまだ未処理の点があるなら処理する
+            refineTparaR(pl,tpara, stt,nmid,smin,nearest_i,onpoints)
+        if end-(nmid+1) >=1 : # 右にまだ未処理の点があるなら処理する
+            refineTparaR(pl,tpara,nmid+1,end,nearest_i,smax,onpoints) 
                 
     while True:
-        linepoints = [bez4.subs(t,t_) for t_ in tpara] # 曲線上の点列
-        linepointsX = [x  for  [x,y] in linepoints] # X
-        linepointsY = [y  for  [x,y] in linepoints] # Y
+        linepoints = [bezN.subs(t,t_) for t_ in tpara] # 曲線上の点列の式表現
+        linepointsX = [x  for  [x,y] in linepoints] # X座標のリスト、式表現
+        linepointsY = [y  for  [x,y] in linepoints] # Y座標のリスト、式表現
         EsumX = lossfunc(listA=points[:,0],listB=linepointsX) #  X方向のずれの評価値
         EsumY = lossfunc(listA=points[:,1],listB=linepointsY) #  Y 方向のずれの評価値
-        # px0,px1, px2, px3, py1, py2,py3,py4 で偏微分
-        if  mode<5: # 自由度４以下
-            # P4は固定なので座標を代入
-            EsumX = EsumX.subs(px[4],points[-1][0])
-            EsumY = EsumY.subs(py[4],points[-1][1])
-        if mode==3:
-            # P0も固定なので座標を代入
+        # px0,px1, px2, px3, ... py1, py2,py3 ...で偏微分
+        
+        if  mode == 2: # 両端点を固定
+            EsumX = EsumX.subs(px[-1],points[-1][0])
+            EsumY = EsumY.subs(py[-1],points[-1][1])
             EsumX = EsumX.subs(px[0],points[0][0])
             EsumY = EsumY.subs(py[0],points[0][1])
-        dx_1 = diff(EsumX,px1)
-        dx_2 = diff(EsumX,px2)
-        dx_3 = diff(EsumX,px3)
-        dy_1 = diff(EsumY,py1)
-        dy_2 = diff(EsumY,py2)
-        dy_3 = diff(EsumY,py3)
-        if mode>3:
-            dx_0 = diff(EsumX,px0)
-            dy_0 = diff(EsumY,py0)
-        if mode==5:
-            dx_4 = diff(EsumX,px4)
-            dy_4 = diff(EsumY,py4)
-
+        for i in range(0,N+1):
+            dx_[i] = diff(EsumX,px[i])
+            dy_[i] = diff(EsumY,py[i])  
+ 
         # 連立させて解く
-        if mode == 5:
-            resultX = solve([dx_0,dx_1,dx_2,dx_3,dx_4],[px[0],px[1],px[2],px[3],px[4]])
-            resultY = solve([dy_0,dy_1,dy_2,dy_3,dy_4],[py[0],py[1],py[2],py[3],py[4]])
-        elif mode ==4:
-            resultX = solve([dx_0,dx_1,dx_2,dx_3],[px[0],px[1],px[2],px[3]])
-            resultY = solve([dy_0,dy_1,dy_2,dy_3],[py[0],py[1],py[2],py[3]])
-        else : # mode ==3
-            resultX = solve([dx_1,dx_2,dx_3],[px[1],px[2],px[3]])
-            resultY = solve([dy_1,dy_2,dy_3],[py[1],py[2],py[3]])
-            
+        if mode == 2 :
+            resultX = solve([dx_[i] for i in range(1,N)],[px[i] for i in range(1,N)])
+            resultY = solve([dy_[i] for i in range(1,N)],[py[i] for i in range(1,N)])
+        else : 
+            resultX = solve([dx_[i] for i in range(N+1)],[px[i] for i in range(N+1)])
+            resultY = solve([dy_[i] for i in range(N+1)],[py[i] for i in range(N+1)])
+                        
         # 解をベジエの式に代入
-        if mode == 5:
-            bezresX = bez4[0].subs([(px[0],resultX[px0]),(px[1],resultX[px1]),(px[2],resultX[px2]),(px[3],resultX[px3]),(px[4],resultX[px4])])
-            bezresY = bez4[1].subs([(py[0],resultY[py0]),(py[1],resultY[py1]),(py[2],resultY[py2]),(py[3],resultY[py3]),(py[4],resultY[py4])])
-        elif mode == 4:
-            bezresX = bez4[0].subs([(px[0],resultX[px0]),(px[1],resultX[px1]),(px[2],resultX[px2]),(px[3],resultX[px3]),(px[4],points[-1][0])])
-            bezresY = bez4[1].subs([(py[0],resultY[py0]),(py[1],resultY[py1]),(py[2],resultY[py2]),(py[3],resultY[py3]),(py[4],points[-1][1])])
-        else : # mode ==3
-            bezresX = bez4[0].subs([(px[0],points[0][0]),(px[1],resultX[px1]),(px[2],resultX[px2]),(px[3],resultX[px3]),(px[4],points[-1][0])])
-            bezresY = bez4[1].subs([(py[0],points[0][1]),(py[1],resultY[py1]),(py[2],resultY[py2]),(py[3],resultY[py3]),(py[4],points[-1][1])])
+        if mode == 2:
+            bezresX = bezN[0].subs([(px[0],points[0][0]),(px[-1],points[-1][0])])
+            bezresY = bezN[1].subs([(py[0],points[0][1]),(py[-1],points[-1][1])])
+            for i in range(1,N):
+                bezresX = bezresX.subs(px[i],resultX[px[i]])
+                bezresY = bezresY.subs(py[i],resultY[py[i]])
+        else: 
+            bezresX = bezN[0]
+            bezresY = bezN[1]           
+            for i in range(0,N+1):
+                bezresX = bezresX.subs(px[i],resultX[px[i]])
+                bezresY = bezresY.subs(py[i],resultY[py[i]])
             
         rx,ry = resultX,resultY
-        if mode == 5:
-            cpx = [rx[px0],rx[px1],rx[px2],rx[px3],rx[px4]]
-            cpy = [ry[py0],ry[py1],ry[py2],ry[py3],ry[py4]]
-        elif mode == 4:
-            cpx = [rx[px0],rx[px1],rx[px2],rx[px3],points[-1][0]]
-            cpy = [ry[py0],ry[py1],ry[py2],ry[py3],points[-1][1]]
-        else: # mode==3
-            cpx = [points[0][0],rx[px1],rx[px2],rx[px3],points[-1][0]]
-            cpy = [points[0][1],rx[px1],ry[py2],ry[py3],points[-1][1]]
-            
+        if mode == 2:
+            cpx = [points[0][0]]+[rx[px[i]] for i in range(1,N)]+[points[-1][0]]
+            cpy = [points[0][1]]+[ry[py[i]] for i in range(1,N)]+[points[-1][1]]    
+        else: # mode==N
+            cpx = [rx[px[i]] for i in range(N+1)]
+            cpy = [ry[py[i]] for i in range(N+1)]
+        
         tpara0 = tpara.copy()
         tpara = refineTpara(points,(bezresX,bezresY))
         diffpara = 0
@@ -711,9 +703,9 @@ def fitBezierCurve４(points,precPara=0.01,mode=3, debugmode=False):
             break
     
     return np.array(cpx),np.array(cpy),bezresX,bezresY,tpara
-    # cpx,cpy → 5つの制御点、bezresX,bezresY ベジエ曲線の定義式
-    # tpara 制御点
-
+    # cpx,cpy 制御点、bezresX,bezresY ベジエ曲線の定義式
+    # tpara 制御点   
+    
 # (15) 輪郭と軸のサンプルデータ　　data  を３本のベジエ曲線で近似する
 def fitBezierAndDraw(data,mode=2,showImage=False,img=None,withImage=False):
     t = symbols("t")
@@ -833,8 +825,8 @@ threeLinesSeq(src, showImage =  False)
 fitBezierCurve3(points,precPara=0.01,mode=2):
 
 #  (14-2) ４次ベジエフィッティング
-def fitBezierCurve４(points,precPara=0.01,mode=3, debugmode=False):
- # mode = 3：両端固定、　mode =4 : 下のみ固定, mode=5:  全制御点自由
+fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
+# mode = 2：両端固定、それ以外は全制御点自由、
 
 # (15) 輪郭と軸のサンプルデータ　　data  を３本のベジエ曲線で近似する
 fitBezierAndDraw(data,mode=2)
