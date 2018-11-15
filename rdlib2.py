@@ -418,7 +418,7 @@ def threeLinesSeq(src, showImage =  False, n_samples=16):
     
     return llist,rlist,clist,dmax
 
-# (14) ベジエフィッティング
+# (14) ベジエフィッティング　（この関数は　firBezierCurveN があるのでもう使わないが、古いプログラムのため残す）
 def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
     # mode = 2：両端固定、　mode =3 : 下のみ固定, mode4 :  全制御点自由
     # ベジエ曲線を定義するのに使うシンボルの宣言
@@ -565,8 +565,8 @@ def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
     # tpara 制御点
 
 #  (14-2) N次ベジエフィッティング
-def fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
-    # order 次数、mode:2 両端点固定、２以外の時は両端点もフリー
+def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
+    # order 次数、openmode: 両端点フリー、Falseの時は両端点固定
     # ベジエ曲線を定義するのに使うシンボルの宣言
     P = [Symbol('P' + str(i)) for i in range(N+1)]
     px = [var('px'+str(i)) for i in range(N+1)]
@@ -653,7 +653,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
         EsumY = lossfunc(listA=points[:,1],listB=linepointsY) #  Y 方向のずれの評価値
         # px0,px1, px2, px3, ... py1, py2,py3 ...で偏微分
         
-        if  mode == 2: # 両端点を固定
+        if  not openmode : # 両端点を固定
             EsumX = EsumX.subs(px[-1],points[-1][0])
             EsumY = EsumY.subs(py[-1],points[-1][1])
             EsumX = EsumX.subs(px[0],points[0][0])
@@ -663,7 +663,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
             dy_[i] = diff(EsumY,py[i])  
  
         # 連立させて解く
-        if mode == 2 :
+        if not openmode :
             resultX = solve([dx_[i] for i in range(1,N)],[px[i] for i in range(1,N)])
             resultY = solve([dy_[i] for i in range(1,N)],[py[i] for i in range(1,N)])
         else : 
@@ -671,7 +671,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
             resultY = solve([dy_[i] for i in range(N+1)],[py[i] for i in range(N+1)])
                         
         # 解をベジエの式に代入
-        if mode == 2:
+        if not openmode:
             bezresX = bezN[0].subs([(px[0],points[0][0]),(px[-1],points[-1][0])])
             bezresY = bezN[1].subs([(py[0],points[0][1]),(py[-1],points[-1][1])])
             for i in range(1,N):
@@ -685,10 +685,10 @@ def fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
                 bezresY = bezresY.subs(py[i],resultY[py[i]])
             
         rx,ry = resultX,resultY
-        if mode == 2:
+        if not openmode:
             cpx = [points[0][0]]+[rx[px[i]] for i in range(1,N)]+[points[-1][0]]
             cpy = [points[0][1]]+[ry[py[i]] for i in range(1,N)]+[points[-1][1]]    
-        else: # mode==N
+        else: # openmode
             cpx = [rx[px[i]] for i in range(N+1)]
             cpy = [ry[py[i]] for i in range(N+1)]
         
@@ -706,7 +706,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
     # cpx,cpy 制御点、bezresX,bezresY ベジエ曲線の定義式
     # tpara 制御点   
     
-# (15) 輪郭と軸のサンプルデータ　　data  を３本のベジエ曲線で近似する
+# (15) 輪郭と軸のサンプルデータ　　data  を３本の3次ベジエ曲線で近似する　（この関数はもう使わないが、古いプログラムのため残す）
 def fitBezierAndDraw(data,mode=2,showImage=False,img=None,withImage=False):
     t = symbols("t")
     [datal,datac,datar] = data
@@ -825,8 +825,8 @@ threeLinesSeq(src, showImage =  False)
 fitBezierCurve3(points,precPara=0.01,mode=2):
 
 #  (14-2) ４次ベジエフィッティング
-fitBezierCurveN(points,precPara=0.01,N=5,mode=5,debugmode=False):
-# mode = 2：両端固定、それ以外は全制御点自由、
+fitBezierCurveN(points,precPara1=0.01,N=5,open=False,open=False,debugmode=False):
+# open = False：両端固定、それ以外は全制御点自由
 
 # (15) 輪郭と軸のサンプルデータ　　data  を３本のベジエ曲線で近似する
 fitBezierAndDraw(data,mode=2)
