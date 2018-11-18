@@ -61,7 +61,27 @@ def listimage(path='シルエット', needThum=False):
 
     return folders,ffiles
 
-# (2)２枚の画像をサイズを並べた画像を作成する
+# (2)画像を表示
+
+# プロット用関数
+IMGON = True
+def plotimg(img,layout="111"):
+    if IMGON is False: return
+    if len(img.shape) == 2:
+        pltgry(img,layout)
+    elif len(img.shape) ==3:
+        pltcol(img,layout)
+
+def pltgry(img,layout="111"):
+    plt.subplot(layout)
+    plt.axis('off')
+    plt.imshow(cv2.cvtColor(img,cv2.COLOR_GRAY2RGB))
+
+def pltcol(img,layout="111"):
+    plt.subplot(layout)
+    plt.axis('off')
+    plt.imshow(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
+    
 def mkparaimage(img1,img2):
     h1,w1 = img1.shape[:2]
     h2,w2 = img2.shape[:2]
@@ -782,6 +802,12 @@ listimage(path='シルエット', needThum=False)
 
 # (2)２枚の画像をサイズを並べた画像を作成する
 mkparaimage(img1,img2)
+
+plotimg(img,layout="111"):　# グレイでもカラーでも表示
+
+pltgry(img,layout="111"): # グレイ画像の表示
+
+pltcol(img,layout="111"):　# カラー画像の表示
 
 # (3) mkparaimage で２枚並べた画像を表示
 imshowpara(img1,img2)
