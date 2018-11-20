@@ -166,7 +166,7 @@ CONTOURS_APPROX = 0.005 # 輪郭近似精度
 HARRIS_PARA = 1.0 # ハリスコーナー検出で、コーナーとみなすコーナーらしさの指標  1.0 なら最大値のみ
 CONTOURS_APPROX = 0.0002 # 輪郭近似精度
 SHRINK = 0.8 # 0.75 # 収縮膨張で形状を整える時のパラメータ
-GAUSSIAN_RATE1= 0.25 # 先端位置を決める際に使うガウスぼかしの程度を決める係数
+GAUSSIAN_RATE1= 0.2 # 先端位置を決める際に使うガウスぼかしの程度を決める係数
 GAUSSIAN_RATE2 = 0.1 # 仕上げに形状を整えるためのガウスぼかしの程度を決める係数
     
 # (8) ガウスぼかし、膨張収縮、輪郭近似で形状を整える関数
@@ -228,8 +228,9 @@ def getCoGandTip(src, showResult=False, useOldImage=True):
     t_x,t_y = np.round(cog[areamax]) # 重心の位置
 
     # コア全体の重心の位置を求める
-    _lnum, _img, _cnt, cog = cv2.connectedComponentsWithStats(img)
-    c_x,c_y = np.round(cog[1])
+    _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(img)
+    areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
+    c_x,c_y = np.round(cog[areamax])
 
     # コーナーの場所のマーキング（デバッグ用）
     # himg = cv2.dilate(himg,None,iterations = 3)
@@ -259,14 +260,16 @@ def roteteAndCutMargin(img,deg,c_x,c_y):
     bigimg = makemargin(img,mr=10) # 作業用のマージンを確保
     h3,w3 = img.shape[:2]
     h4,w4 = bigimg.shape[:2]
-    mat = cv2.getRotationMatrix2D((c_x+(w4-w3)/2,c_y+(h4-h3)/2), deg, 1.0) # アフィン変換マトリクス
-
-    # アフィン変換の適用
-    bigimg = cv2.warpAffine(bigimg, mat, (0,0),1)
+    
+    if deg != 0:
+        mat = cv2.getRotationMatrix2D((c_x+(w4-w3)/2,c_y+(h4-h3)/2), deg, 1.0) # アフィン変換マトリクス
+        # アフィン変換の適用
+        bigimg = cv2.warpAffine(bigimg, mat, (0,0),1)
 
     # 再び最小矩形を求めて切り出す。ただし、マージンを５つける
     _nLabels, _labelImages, data, _center = cv2.connectedComponentsWithStats(bigimg) 
-    resultimg = bigimg[data[1][1]-5:data[1][1]+data[1][3]+5,data[1][0]-5:data[1][0]+data[1][2]+5]
+    ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
+    resultimg = bigimg[data[ami][1]-5:data[ami][1]+data[ami][3]+5,data[ami][0]-5:data[ami][0]+data[ami][2]+5]
 
     return resultimg
 
@@ -274,11 +277,13 @@ def roteteAndCutMargin(img,deg,c_x,c_y):
 #   この関数ではぼかしは行わない。
 def getUpperCoGandCoC(src):
     _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(src)
-    c_x,c_y = np.round(cog[1]) # 重心
+    ami = np.argmax(cnt[1:,4])+1 
+    c_x,c_y = np.round(cog[ami]) # 重心
     h,w = src.shape[:2] 
     halfimg = src[:int(c_y),:].copy() # 重心位置から上を取り出す。
     _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(halfimg)
-    uc_x,uc_y = np.round(cog[1]) # 上半分の重心
+    ami =  np.argmax(cnt[1:,4])+1 
+    uc_x,uc_y = np.round(cog[ami]) # 上半分の重心
     sliceindex = np.where(src[int(c_y)]!=0) # 重心断面の白画素数位置
     left = np.min(sliceindex) #  断面における最も左の白画素位置
     right = np.max(sliceindex) #  断面における最も右の白画素位置
@@ -306,8 +311,9 @@ def getstandardShape(src, unitSize=UNIT,showResult=False):
 
     # 最大面積の領域を抜き出す。ゴミ領域があるかもしれないので念のため。
     _nLabels, labelImages, data, _center = cv2.connectedComponentsWithStats(img5)
-    img5 = img5[data[1][1]:data[1][1]+data[1][3],data[1][0]:data[1][0]+data[1][2]]
-    if showResult: refimg = refimg[data[1][1]:,data[1][0]:data[1][0]+data[1][2]]
+    ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
+    img5 = img5[data[ami][1]:data[ami][1]+data[ami][3],data[ami][0]:data[ami][0]+data[ami][2]]
+    if showResult: refimg = refimg[data[ami][1]:,data[ami][0]:data[ami][0]+data[ami][2]]
 
     '''
     # 重心より上部分の重心の位置と、重心の高さでのシルエット断面の中心を求める
