@@ -207,7 +207,7 @@ def RDreform(img,ksize=5,shrink=SHRINK):
     
 # (9)重心と先端の位置を返す関数
 #   先端位置はシルエットをガウスぼかしで滑らかにした上で曲率の高い場所
-def getCoGandTip(src, showResult=False, useOldImage=True):
+def getCoGandTip(src, showResult=False, useOldImage=True):    
     # useOldImage = True なら元の画像を使って結果を表示、Falseなら滑らかにした画像
     img = makemargin(src) # 作業用のマージンを確保
     img2 = img.copy() # 加工前の状態を保存
@@ -216,21 +216,25 @@ def getCoGandTip(src, showResult=False, useOldImage=True):
     img = cv2.GaussianBlur(img,(ksize,ksize),0) # ガウスぼかしを適用
     # ２値化してシルエットを求め直す
     _ret,img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY) # ２値化
+    
+    # コア全体の重心の位置を求める
+    _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(img)
+    areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
+    c_x,c_y = np.round(cog[areamax])
+    x0,y0,w,h = cnt[areamax,0:4]
+    h2 = int(h/2)
+    
     # Harris コーナ検出
     himg = np.float32(img)
     himg = cv2.cornerHarris(himg,blockSize=3,ksize=3,k=0.04)
     # コーナー度合いが最大の領域を求める
     wimg = np.zeros_like(img)
-    wimg[himg>=HARRIS_PARA*himg.max()]=255 # コーナー度最大値の領域を２５５で塗りつぶす。
+    wimg[himg>=HARRIS_PARA*himg[y0+h2:,:].max()]=255 # 下半分のコーナー度最大値の領域を２５５で塗りつぶす。
     # 最大値に等しい値の領域が１点とは限らないし、いくつかの点の塊になるかもしれない
-    _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(wimg)
+    _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(wimg[y0+h2:,:])
     areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
     t_x,t_y = np.round(cog[areamax]) # 重心の位置
-
-    # コア全体の重心の位置を求める
-    _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(img)
-    areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
-    c_x,c_y = np.round(cog[areamax])
+    t_y += y0+h2
 
     # コーナーの場所のマーキング（デバッグ用）
     # himg = cv2.dilate(himg,None,iterations = 3)
@@ -295,12 +299,19 @@ def getUpperCoGandCoC(src):
 
 UNIT = 256 # 長い方の辺をこのサイズになるよう拡大縮小する
 
-def getstandardShape(src, unitSize=UNIT,showResult=False):
-    # 重心と先端の位置を調べる
-    c_x,c_y,t_x,t_y = getCoGandTip(src,showResult=False)
-    deg = getDegreeOfALine(c_x,c_y,t_x,t_y)
-    # 重心と先端を結ぶラインがY軸となるように回転し余白はカット
-    img = roteteAndCutMargin(src,deg-90,c_x,c_y)
+def getstandardShape(src, unitSize=UNIT, thres = 0.25, showResult=False):
+                                 
+    # 全体的な方向がY軸に沿っているならそのまま、そうでなければ重心と先端を合わせるように回転　しきい値　thres 0.25 は約１５度の傾き
+    ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)
+    image, contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    cnt = contours[0]
+    [vx,vy,x,y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
+    if np.abs(vx) > thres:
+        # 重心と先端の位置を調べる
+        c_x,c_y,t_x,t_y = getCoGandTip(img,showResult=False)
+        deg = getDegreeOfALine(c_x,c_y,t_x,t_y)
+        # 重心と先端を結ぶラインがY軸となるように回転し余白はカット
+        img = roteteAndCutMargin(img,deg-90,c_x,c_y)
    
     # 大きさを標準化したいが、無駄に根が長いと相対的に重要部分が小さくなるのでまず根を削る
     # 作業用のマージンを確保
@@ -314,15 +325,7 @@ def getstandardShape(src, unitSize=UNIT,showResult=False):
     ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
     img5 = img5[data[ami][1]:data[ami][1]+data[ami][3],data[ami][0]:data[ami][0]+data[ami][2]]
     if showResult: refimg = refimg[data[ami][1]:,data[ami][0]:data[ami][0]+data[ami][2]]
-
-    '''
-    # 重心より上部分の重心の位置と、重心の高さでのシルエット断面の中心を求める
-    uc_x,uc_y,d_x,d_y = getUpperCoGandCoC(img5)
-    # 重心(c_x,c_y)と上半分の重心(uc_x,uc_y)結ぶ直線の角度を計算する
-    deg2 = getDegreeOfALine(uc_x,uc_y,d_x,d_y)
-    # 上半分の重心が重心の真上に来るように画像を回転し、余白を削る
-    img5 = roteteAndCutMargin(img5,deg2-90,uc_x,uc_y)    
-    '''    
+  
     # 長辺が UNIT ピクセルになるよう縮小し、(1.5xUNIT)x(1.5xUNIT)の画像の中央に配置する。
     h,w = img5.shape[:2]
     s_r = UNIT/w if w > h else UNIT/h #  縮小率    
