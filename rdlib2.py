@@ -318,7 +318,6 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, showResu
         c_x,c_y,t_x,t_y = getCoGandTip(img,showResult=False)
         deg = getDegreeOfALine(c_x,c_y,t_x,t_y)-90 if setrotation == 0 else setrotation
         # 重心と先端を結ぶラインがY軸となるように回転し余白はカット
-        print("DEG",deg,setrotation)
         img = roteteAndCutMargin(img,deg,c_x,c_y)
     else :
         img = roteteAndCutMargin(img,0,0,0)
