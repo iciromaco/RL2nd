@@ -165,13 +165,21 @@ def getTerminalPsOnLine(x1,y1,x2,y2):
 CONTOURS_APPROX = 0.005 # 輪郭近似精度
 HARRIS_PARA = 1.0 # ハリスコーナー検出で、コーナーとみなすコーナーらしさの指標  1.0 なら最大値のみ
 CONTOURS_APPROX = 0.0002 # 輪郭近似精度
-SHRINK = 0.8 # 0.75 # 収縮膨張で形状を整える時のパラメータ
+SHRINK = 0.9 # 0.75 # 収縮膨張で形状を整える時のパラメータ
 GAUSSIAN_RATE1= 0.2 # 先端位置を決める際に使うガウスぼかしの程度を決める係数
 GAUSSIAN_RATE2 = 0.1 # 仕上げに形状を整えるためのガウスぼかしの程度を決める係数
+UNIT = 256 # 最終的に長い方の辺をこのサイズになるよう拡大縮小する
     
 # (8) ガウスぼかし、膨張収縮、輪郭近似で形状を整える関数
 # 形状の細かな変化をガウスぼかし等でなくして大まかな形状にする関数
-def RDreform(img,ksize=5,shrink=SHRINK):
+def RDreform(img,ksize=5,shrink=SHRINK,nsize=4*UNIT):
+    
+    # 長辺が nsizeピクセルになるよう拡大縮小する。
+    h,w = img.shape[:2]
+    s_r = nsize/w if w > h else nsize/h #  縮小率    
+    rsh,rsw = int(s_r*h),int(s_r*w) # リサイズ後のサイズ
+    canvas = cv2.resize(img,(rsw,rsh)) # リサイズ
+    
     # ガウスぼかしを適用してシルエットを滑らかにする
     img2 = cv2.GaussianBlur(img,(ksize,ksize),0) # ガウスぼかしを適用
     _ret,img2 = cv2.threshold(img2, 127, 255, cv2.THRESH_BINARY) # ２値化
@@ -297,21 +305,23 @@ def getUpperCoGandCoC(src):
 # (12) シルエット画像の標準化
 # 画像サイズをある程度揃えたい
 
-UNIT = 256 # 長い方の辺をこのサイズになるよう拡大縮小する
-
-def getstandardShape(src, unitSize=UNIT, thres = 0.25, showResult=False):
+def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, showResult=False):
+    # src 画像, unitSize 長軸をこの長さに正規化、thres 方向のx成分がこれ以下なら回転処理を施さない  setrotation 強制回転角
                                  
     # 全体的な方向がY軸に沿っているならそのまま、そうでなければ重心と先端を合わせるように回転　しきい値　thres 0.25 は約１５度の傾き
     ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)
     image, contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cnt = contours[0]
     [vx,vy,x,y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
-    if np.abs(vx) > thres:
+    if np.abs(vx) > thres or setrotation != 0:
         # 重心と先端の位置を調べる
         c_x,c_y,t_x,t_y = getCoGandTip(img,showResult=False)
-        deg = getDegreeOfALine(c_x,c_y,t_x,t_y)
+        deg = getDegreeOfALine(c_x,c_y,t_x,t_y)-90 if setrotation == 0 else setrotation
         # 重心と先端を結ぶラインがY軸となるように回転し余白はカット
-        img = roteteAndCutMargin(img,deg-90,c_x,c_y)
+        print("DEG",deg,setrotation)
+        img = roteteAndCutMargin(img,deg,c_x,c_y)
+    else :
+        img = roteteAndCutMargin(img,0,0,0)
    
     # 大きさを標準化したいが、無駄に根が長いと相対的に重要部分が小さくなるのでまず根を削る
     # 作業用のマージンを確保
