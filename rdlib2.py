@@ -11,9 +11,10 @@ from skimage.util import invert
 from skimage import io
 import skimage.data
 import skimage.color
-from sympy import *
+# from sympy import *
+from sympy import diff,Symbol,Matrix,symbols,solve,simplify,binomial
 from sympy.abc import a,b,c
-init_session()
+# init_session()
 from sympy import var
 
 # (1)画像のリストアップ
@@ -23,7 +24,7 @@ def listimage(path='シルエット', needThum=False):
     
     # まずフォルダを全部リストアップ　→ folders
     folders = []
-    for x in os.listdir(path):  
+    for x in directory:  
         if os.path.isdir(path + '/'+x) and x[0] != '.' and x[0] !='_':  #パスに取り出したオブジェクトを足してフルパスに
             folders.append(path + '/'+x)
     # print(folders)
@@ -131,7 +132,7 @@ def draw2(bimg,fimg):
     # canvas = np.zeros_like(fimg2)
     canvas = fimg2.copy()
     _ret,bwimg = cv2.threshold(bimg2,128,255,cv2.THRESH_BINARY) # 白画素は255にする
-    _img,cnt,hierarchy = cv2.findContours(bwimg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    _img,cnt,_hierarchy = cv2.findContours(bwimg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     # canvas = cv2.drawContours(canvas, cnt, -1, (255,230,230), thickness=-1)
     canvas = cv2.drawContours(canvas, cnt, -1, (255,0,200), thickness=1)
     # return cv2.addWeighted(fimg2, 0.5, canvas, 0.5,0)
@@ -174,12 +175,6 @@ UNIT = 256 # 最終的に長い方の辺をこのサイズになるよう拡大�
 # 形状の細かな変化をガウスぼかし等でなくして大まかな形状にする関数
 def RDreform(img,ksize=5,shrink=SHRINK,nsize=4*UNIT):
     
-    # 長辺が nsizeピクセルになるよう拡大縮小する。
-    h,w = img.shape[:2]
-    s_r = nsize/w if w > h else nsize/h #  縮小率    
-    rsh,rsw = int(s_r*h),int(s_r*w) # リサイズ後のサイズ
-    canvas = cv2.resize(img,(rsw,rsh)) # リサイズ
-    
     # ガウスぼかしを適用してシルエットを滑らかにする
     img2 = cv2.GaussianBlur(img,(ksize,ksize),0) # ガウスぼかしを適用
     _ret,img2 = cv2.threshold(img2, 127, 255, cv2.THRESH_BINARY) # ２値化
@@ -200,7 +195,7 @@ def RDreform(img,ksize=5,shrink=SHRINK,nsize=4*UNIT):
     areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
     img3 = np.zeros_like(img3)
     img3[labelimg==areamax]=255
-    _img,cnt,hierarchy = cv2.findContours(img3, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) #  あらためて輪郭を抽出
+    _img,cnt,_hierarchy = cv2.findContours(img3, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) #  あらためて輪郭を抽出
     outimg = np.zeros_like(img3)
     # outimg = cv2.drawContours(outimg, cnt, 0, 255, thickness=-1) 
     # 近似輪郭を求めて描きなおす
@@ -229,7 +224,7 @@ def getCoGandTip(src, showResult=False, useOldImage=True):
     _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(img)
     areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
     c_x,c_y = np.round(cog[areamax])
-    x0,y0,w,h = cnt[areamax,0:4]
+    _x0,y0,_w,h = cnt[areamax,0:4]
     h2 = int(h/2)
     
     # Harris コーナ検出
@@ -290,8 +285,7 @@ def roteteAndCutMargin(img,deg,c_x,c_y):
 def getUpperCoGandCoC(src):
     _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(src)
     ami = np.argmax(cnt[1:,4])+1 
-    c_x,c_y = np.round(cog[ami]) # 重心
-    h,w = src.shape[:2] 
+    _c_x,c_y = np.round(cog[ami]) # 重心
     halfimg = src[:int(c_y),:].copy() # 重心位置から上を取り出す。
     _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(halfimg)
     ami =  np.argmax(cnt[1:,4])+1 
@@ -309,10 +303,10 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, showResu
     # src 画像, unitSize 長軸をこの長さに正規化、thres 方向のx成分がこれ以下なら回転処理を施さない  setrotation 強制回転角
                                  
     # 全体的な方向がY軸に沿っているならそのまま、そうでなければ重心と先端を合わせるように回転　しきい値　thres 0.25 は約１５度の傾き
-    ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)
-    image, contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)
+    _image, contours, _hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cnt = contours[0]
-    [vx,vy,x,y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
+    [vx,_vy,_x,_y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
     if np.abs(vx) > thres or setrotation != 0:
         # 重心と先端の位置を調べる
         c_x,c_y,t_x,t_y = getCoGandTip(img,showResult=False)
@@ -330,7 +324,7 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, showResu
     img5 = RDreform(img5)
 
     # 最大面積の領域を抜き出す。ゴミ領域があるかもしれないので念のため。
-    _nLabels, labelImages, data, _center = cv2.connectedComponentsWithStats(img5)
+    _nLabels, _labelImages, data, _center = cv2.connectedComponentsWithStats(img5)
     ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
     img5 = img5[data[ami][1]:data[ami][1]+data[ami][3],data[ami][0]:data[ami][0]+data[ami][2]]
     if showResult: refimg = refimg[data[ami][1]:,data[ami][0]:data[ami][0]+data[ami][2]]
@@ -369,8 +363,8 @@ SAMPLE_NUM=16  # 使用するサンプル点の数
 
 def threeLinesSeq(src, showImage =  False, n_samples=16): 
     global tupple
-    _img,cnt,hierarchy = cv2.findContours(src, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) #  あらためて輪郭を抽出
-    x0,y0,w,h = cv2.boundingRect(cnt[0])
+    _img,cnt,_hierarchy = cv2.findContours(src, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) #  あらためて輪郭を抽出
+    x0,y0,_w,h = cv2.boundingRect(cnt[0])
     x = cnt[0][:,0][:,0] # 輪郭のX座標の列
     y = cnt[0][:,0][:,1] # 輪郭のY座標の列
     # 輪郭点を各Y座標について左右ペアで求める。同時にそれらの中点の座標を加えた３つ組をリスト化する。
@@ -610,7 +604,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     px = [var('px'+str(i)) for i in range(N+1)]
     py = [var('py'+str(i)) for i in range(N+1)]
     dx_ = [var('dx_'+str(i)) for i in range(N+1)]
-    dy_ = [var('dy_'+sstr(i)) for i in range(N+1)]
+    dy_ = [var('dy_'+str(i)) for i in range(N+1)]
     
     for i in range(N+1):
         P[i] = Matrix([px[i],py[i]]) 
@@ -746,7 +740,6 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     
 # (15) 輪郭と軸のサンプルデータ　　data  を３本の3次ベジエ曲線で近似する　（この関数はもう使わないが、古いプログラムのため残す）
 def fitBezierAndDraw(data,mode=2,showImage=False,img=None,withImage=False):
-    t = symbols("t")
     [datal,datac,datar] = data
     
     # 初期の推定パラメータの決定
@@ -763,18 +756,19 @@ def fitBezierAndDraw(data,mode=2,showImage=False,img=None,withImage=False):
 # (16) ３本のベジエ曲線を描画する
 def drawThreeLines(ldata,cdata,rdata,img=None,withImage=False,invertImage=False):
 
-    [cpxl,cpyl,bezXl,bezYl,tpl]=ldata # cpxx , cpyx 制御点４つの座標配列、
-    [cpxc,cpyc,bezXc,bezYc,tpc]=cdata # bezXx,bezYx ベジエ 曲線、
-    [cpxr,cpyr,bezXr,bezYr,tpr]=rdata # tpl 制御点のパラメータ
+    [cpxl,cpyl,bezXl,bezYl,_tpl]=ldata # cpxx , cpyx 制御点４つの座標配列、
+    [cpxc,cpyc,bezXc,bezYc,_tpc]=cdata # bezXx,bezYx ベジエ 曲線、
+    [cpxr,cpyr,bezXr,bezYr,_tpr]=rdata # tpl 制御点のパラメータ
     
-    t,p0,p1,p2,p3 = symbols("t,p0,p1,p2,p3")
+    t = symbols("t")
+    # t, p0,p1,p2,p3 = symbols("t, p0,p1,p2,p3")
     # ３次のベジエ曲線の定義式制御点 P0~P3 とパラメータ　　t　の関数として定義
-    bez3 = (1-t)**3*p0 + 3*(1-t)**2*t*p1 + 3*(1-t)*t**2*p2 + t**3*p3
+    # bez3 = (1-t)**3*p0 + 3*(1-t)**2*t*p1 + 3*(1-t)*t**2*p2 + t**3*p3
     
     # 結果の描画
     if True:
         tplinsOver = np.linspace(-0.03, 1.03,55)
-        tplinsLong = np.linspace(-0.3, 1.3,50)
+        # tplinsLong = np.linspace(-0.3, 1.3,50)
         tplins50 = np.linspace(0, 1, 50)
         if withImage: # 画像付きの場合は長く
             tplinsOver = np.linspace(-0.3, 1.3,50)
