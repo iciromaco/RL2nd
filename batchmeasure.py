@@ -178,102 +178,6 @@ def drawBez2(savepath,img,bezL=None,bezR=None,bezC=None,cpl=None,cpr=None,cpc=No
                 pltsaveimage(savepath,'RAD')
     
 # 中心軸ベジエをもとにそれに輪郭点を左右に分割する
-def reGetCntPairOLD(img,cnt,cpl,cpr,bezC,CAPCUT=0,TAILCUT=0):          
-    xLu,xRu,yLu,yRu = cpl[0][0],cpr[0][0],cpl[0][1],cpr[0][1] # 近似曲線の上端の座標
-    xLb,xRb,yLb,yRb = cpl[0][0],cpr[0][0],cpl[0][1],cpr[0][1] # 近似曲線の上端の座標
-    bezXc,bezYc = bezC
-        
-    # 輪郭線の描画
-    canvas = np.zeros_like(img)
-    canvas = cv2.drawContours(canvas, cnt, -1, 255, thickness=1)
-          
-    # 軸と輪郭の交点
-    (crpx0,crpy0),(crpx1,crpy1) = crossPoints(img,cnt,bezC)
-    if crpy0 > crpy1: 
-        crpx0,crpy0,cpyx1,crpy1 = crpx1,crpy1,crpx0,crpy0
-    
-    # 中心軸の延長で上端から最大径離れた地点を中心に最大直径より少し大きな円を０で描き輪郭を削る。
-    dy = float((diff(bezYc,t)).subs(t,0.1))
-    dx = float((diff(bezXc,t)).subs(t,0.1)) # t=0 は境界なので変な値にあることがあるため 0.1 としている
-    dd = np.sqrt(dx*dx+dy*dy)
-    dkusabi = (xRu-xLu)*abs(dx)/dd/2
-    acc = dy/dx if dx != 0 else np.inf # 中心軸の傾き
-    x00 = bezXc.subs(t,0) #  軸の再上端
-    y00 = bezYc.subs(t,0)
-    ddd = sqrt((crpx0-x00)**2+(crpy0-y00)**2) # ベジエ軸上端と輪郭上端の距離
-    #dddd = 5*(ddd-dkusabi)**2*((ddd-dkusabi)*dy/dd/(xRu-xLu) -0.1)
-    dddd = -10 if ddd/(xRu-xLu) < 0.2 else  ddd-dkusabi 
-    if CAPCUT != 0: # 特別指定された削除調整量がある場合
-        dddd = -CAPCUT
-    diaMinus =  1024
-    xdd = diaMinus*dx/sqrt(dx**2+dy**2) #  1024離れるためのX移動量
-    dia_U = diaMinus-dddd # 
-    x11_U = x00-xdd
-    y11_U =  y00-xdd*acc if acc != np.inf else y00-diaMinus    
-    distO2top = np.sqrt(float(((crpy0-y11_U)**2 + (crpx0-x11_U)**2))) - dia_U  
-    if  distO2top > 0 : # 削除中心と輪郭頂点の距離が削除半径より遠い(ということは削れない)ならその分以上に長くする
-        dia_U += distO2top+5
-    #canvas =  cv2.circle(canvas,(int(x11),int(y11)),int(dia_U),0,-1) # 黒で円を描いて削る
-    # 同様に下端を削る
-    dy = float((diff(bezYc,t)).subs(t,0.9))
-    dx = float((diff(bezXc,t)).subs(t,0.9)) # t=1 は境界なので変な値にあることがあるため 0.9 としている
-    dd = np.sqrt(dx*dx+dy*dy)
-    dkusabi = (xRb-xLb)*abs(dx)/dd/2
-    acc = dy/dx if dx != 0 else np.inf # 中心軸の傾き
-    x00 = bezXc.subs(t,1) #  軸の再下端
-    y00 = bezYc.subs(t,1)
-    xdd = diaMinus*dx/sqrt(dx**2+dy**2) # 
-    ddd = sqrt((crpx1-x00)**2+(crpy1-y00)**2) # ベジエ軸下端と輪郭下端の距離
-    dddd = -10 if (xRu-xLu)/(xRb-xLb) > 4  else  ddd-dkusabi 
-    if TAILCUT != 0: # 特別指定された削除調整量がある場合
-        dddd = -TAILCUT
-    dia_B = diaMinus-dddd
-    x11_B = x00+xdd
-    y11_B =  y00+xdd*acc if acc != np.inf else y00+diaMinus
-    distO2top = np.sqrt(float(((crpy1-y11_B)**2 + (crpx1-x11_B)**2))) - dia_B  
-    if  distO2top > 0 : # 削除中心と輪郭頂点の距離が削除半径より遠い(ということは削れない)ならその分以上に長くする
-        dia_B += distO2top+5
-    canvas =  cv2.circle(canvas,(int(x11_U),int(y11_U)),int(dia_U),0,-1) # 黒で円を描いて削る        
-    canvas =  cv2.circle(canvas,(int(x11_B),int(y11_B)),int(dia_B),0,-1) # 黒で円を描いて削る
-    
-    flag = True
-    while True:    
-        # 輪郭検出すれば２つの輪郭が見つかるはず。
-        _, contours, hierarchy = cv2.findContours(canvas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        # 線図形の輪郭は中間で折り返しになっている
-        
-        if len(contours) < 2:
-            continue
-        cnt0 = contours[0][:int(len(contours[0])/2+1)]
-        cnt1 = contours[1][:int(len(contours[1])/2+1)]
-        # 中程の点を比べて左にある方を左と判定する。
-        c0 = cnt0[int(len(cnt0)/2)][0][0]
-        c1 = cnt1[int(len(cnt1)/2)][0][0]
-        if  c0 > c1: 
-            cntL,cntR = cnt1,cnt0
-        else:
-            cntR,cntL = cnt1,cnt0
-
-        if len(cntL)/len(cntR) > 0.9 and  len(cntR)/len(cntL) > 0.9: # 左右の輪郭長の差が１０％以内
-            break
-        else:
-            if flag:
-                dia_U += 2
-                flag = not flag
-                canvas =  cv2.circle(canvas,(int(x11_U),int(y11_U)),int(dia_U),0,-1) # 黒で円を描いて削る 
-            else: 
-                dia_B += 2
-                flag = not flag
-                canvas =  cv2.circle(canvas,(int(x11_B),int(y11_B)),int(dia_B),0,-1) # 黒で円を描いて削る
-            
-    print("左輪郭点の数 ", len(cntL),"　右輪郭点の数　", len(cntR))
-
-    #  ２重かっこを１重に変換し、numpy array にしてから返す
-    cntL = np.array([[x,y] for [[x,y]] in cntL])
-    cntR = np.array([[x,y] for [[x,y]] in cntR])                
-    return cntL,cntR,(crpx0,crpy0),(crpx1,crpy1)
-
-# 中心軸ベジエをもとにそれに輪郭点を左右に分割する
 def reGetCntPair(img,cnt,cpl,cpr,bezC,CAPCUT=0,TAILCUT=0):
     # xLu,xRu,yLu,yRu = cpl[0][0],cpr[0][0],cpl[0][1],cpr[0][1] # 近似曲線の上端の座標
     # xLb,xRb,yLb,yRb = cpl[0][0],cpr[0][0],cpl[0][1],cpr[0][1] # 近似曲線の上端の座標
@@ -326,8 +230,9 @@ def reGetCntPair(img,cnt,cpl,cpr,bezC,CAPCUT=0,TAILCUT=0):
     while True:    
         # 輪郭検出すれば２つの輪郭が見つかるはず。
         _, contours, hierarchy = cv2.findContours(canvas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        if len(contours) ==2: 
-            # 線図形の輪郭は中間で折り返しになっている
+        # 線図形の輪郭は中間で折り返しになっている
+        
+        if len(contours) == 2:
             cnt0 = contours[0][:int(len(contours[0])/2+1)]
             cnt1 = contours[1][:int(len(contours[1])/2+1)]
             # 中程の点を比べて左にある方を左と判定する。
@@ -337,19 +242,18 @@ def reGetCntPair(img,cnt,cpl,cpr,bezC,CAPCUT=0,TAILCUT=0):
                 cntL,cntR = cnt1,cnt0
             else:
                 cntR,cntL = cnt1,cnt0
-
-            if len(cntL) > 200-CAPCUT-TAILCUT and len(cntR) > 200-CAPCUT-TAILCUT: # どちらか削り足りないに違いない
+            if len(cntL)/len(cntR) > 0.9 and  len(cntR)/len(cntL) > 0.9: # 左右の輪郭長の差が１０％以内
                 break
-
-            else:
-                if flag:
-                    dia_U += 2
-                    flag = not flag
-                    canvas =  cv2.circle(canvas,(int(x11_U),int(y11_U)),int(dia_U),0,-1) # 黒で円を描いて削る 
-                else: 
-                    dia_B += 2
-                    flag = not flag
-                    canvas =  cv2.circle(canvas,(int(x11_B),int(y11_B)),int(dia_B),0,-1) # 黒で円を描いて削る
+            # else 偏りが大きすぎる場合、もう少し削った方が良い
+        # 輪郭が２つ出ないとすれば、１つ、２つでここにくる時は偏りがある場合、
+        if flag:
+            dia_U += 2
+            flag = not flag
+            canvas =  cv2.circle(canvas,(int(x11_U),int(y11_U)),int(dia_U),0,-1) # 黒で円を描いて削る 
+        else: 
+            dia_B += 2
+            flag = not flag
+            canvas =  cv2.circle(canvas,(int(x11_B),int(y11_B)),int(dia_B),0,-1) # 黒で円を描いて削る
         # 輪郭が２分割されていない、または、分割されているがどちらかの長さが異常である場合は繰り返す
         
     print("左輪郭点の数 ", len(cntL),"　右輪郭点の数　", len(cntR))
