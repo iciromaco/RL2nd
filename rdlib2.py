@@ -677,7 +677,9 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         if end-(nmid+1) >=1 : # 右にまだ未処理の点があるなら処理する
             refineTparaR(pl,tpara,nmid+1,end,nearest_i,smax,onpoints) 
                 
+    trynum = 0
     while True:
+        trynum += 1
         linepoints = [bezN.subs(t,t_) for t_ in tpara] # 曲線上の点列の式表現
         linepointsX = [x  for  [x,y] in linepoints] # X座標のリスト、式表現
         linepointsY = [y  for  [x,y] in linepoints] # Y座標のリスト、式表現
@@ -724,16 +726,18 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
             cpx = [rx[px[i]] for i in range(N+1)]
             cpy = [ry[py[i]] for i in range(N+1)]
         
-        tpara0 = tpara.copy()
-        tpara = refineTpara(points,(bezresX,bezresY))
+        tpara0 = tpara.copy() # 元の t の推定値
+        tpara = refineTpara(points,(bezresX,bezresY)) # 新たに推定値を求める
         diffpara = 0
         for i in range(len(tpara)) :
-            diffpara += np.sqrt((tpara[i]-tpara0[i])**2)
+            diffpara += np.sqrt((tpara[i]-tpara0[i])**2) # 変化量の合計
+        print(".",end='')
         if debugmode:
-            print("diffpara",diffpara)
-        if diffpara < precPara:
+            print("TRY",trynum,"diffpara",diffpara,diffpara0)
+        if diffpara < precPara*1.03**trynum: # 収束しない時のために、条件を徐々に下げていく
             break
-    
+    print("o",end="")
+        
     return np.array(cpx),np.array(cpy),bezresX,bezresY,tpara
     # cpx,cpy 制御点、bezresX,bezresY ベジエ曲線の定義式
     # tpara 制御点   
