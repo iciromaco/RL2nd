@@ -207,7 +207,15 @@ def RDreform(img,ksize=5,shrink=SHRINK,nsize=4*UNIT):
     outimg = cv2.drawContours(outimg, [approx], 0, 255, thickness=-1) 
 
     return outimg
-    
+
+# 重心の位置を求める
+def getCoG(img):
+    _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(img)
+    areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
+    c_x,c_y = np.round(cog[areamax]) # 重心の位置を丸めて答える
+    x,y,w,h = cnt[areamax,0:4] # 囲む矩形の x0,y0,w,h
+    return c_x,c_y,x,y,w,h
+
 # (9)重心と先端の位置を返す関数
 #   先端位置はシルエットをガウスぼかしで滑らかにした上で曲率の高い場所
 def getCoGandTip(src, showResult=False, useOldImage=True):    
@@ -221,10 +229,8 @@ def getCoGandTip(src, showResult=False, useOldImage=True):
     _ret,img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY) # ２値化
     
     # コア全体の重心の位置を求める
-    _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(img)
-    areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
-    c_x,c_y = np.round(cog[areamax])
-    _x0,y0,_w,h = cnt[areamax,0:4]
+    c_x,c_y,_x0,y0,_w,h = getCoG(img)
+    # 全体を囲む矩形の中間の高さ
     h2 = int(h/2)
     
     # Harris コーナ検出
@@ -299,23 +305,31 @@ def getUpperCoGandCoC(src):
 # (12) シルエット画像の標準化
 # 画像サイズをある程度揃えたい
 
-def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, showResult=False):
+def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, norotation = False, showResult=False):
     # src 画像, unitSize 長軸をこの長さに正規化、thres 方向のx成分がこれ以下なら回転処理を施さない  setrotation 強制回転角
-                                 
+    
     # 全体的な方向がY軸に沿っているならそのまま、そうでなければ重心と先端を合わせるように回転　しきい値　thres 0.25 は約１５度の傾き
-    _ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)
+    _ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)    
     _image, contours, _hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    cnt = contours[0]
+    cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
+    # 輪郭線全体を直線近似して向きを決定する
     [vx,_vy,_x,_y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
-    if np.abs(vx) > thres or setrotation != 0:
-        # 重心と先端の位置を調べる
-        c_x,c_y,t_x,t_y = getCoGandTip(img,showResult=False)
-        deg = getDegreeOfALine(c_x,c_y,t_x,t_y)-90 if setrotation == 0 else setrotation
+    
+    if norotation or np.abs(vx) <= thres and setrotation == 0: # 非回転が指定されているか、回転角の指定がなく、角度が浅いなら回転させない
+        img = roteteAndCutMargin(img,0,0,0)
+    else:
+        if setrotation != 0: # 回転角が指定されているならその角度
+            deg = setrotation
+            c_x,c_y,_x,_y,_w,_h = getCoG(img) # 重心 c_x,c_y
+        else: # 何も指定がなく、傾いている場合
+            # 重心と先端の位置を調べてそれを垂直になるように回転する
+            c_x,c_y,t_x,t_y = getCoGandTip(img,showResult=False)
+            deg = getDegreeOfALine(c_x,c_y,t_x,t_y)-90 
+            if abs(deg) > 45: # 45度を超えるとすると先端位置を誤検出しているに違いないので回転させるのはやめる
+                deg = 0
         # 重心と先端を結ぶラインがY軸となるように回転し余白はカット
         img = roteteAndCutMargin(img,deg,c_x,c_y)
-    else :
-        img = roteteAndCutMargin(img,0,0,0)
-   
+        
     # 大きさを標準化したいが、無駄に根が長いと相対的に重要部分が小さくなるのでまず根を削る
     # 作業用のマージンを確保
     img5 = makemargin(img) 
@@ -351,7 +365,10 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, showResu
     ksize = 2*int((GAUSSIAN_RATE2*UNIT)/2)+1 # ぼかし量  元の図形の幅に応じて決める
     canvas = cv2.GaussianBlur(canvas,(ksize,ksize),0) # ガウスぼかしを適用
     _ret,resultimg = cv2.threshold(canvas, 128, 255, cv2.THRESH_BINARY) # ２値化
-
+    #_image, contours, _hierarchy = cv2.findContours(resultimg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    #cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
+    #resultimg = cv2.drawContours(resultimg, [cnt], -1, 255, thickness=-1)
+    
     if showResult:
         plt.figure(figsize=(7,10),dpi=100)
         plt.imshow(draw2(refimg2,resultimg))
@@ -613,8 +630,10 @@ def eraseinf(plist):
     
 #  (14-2) N次ベジエフィッティング
 def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
+    
     # order 次数、openmode: 両端点フリー、Falseの時は両端点固定
     # ベジエ曲線を定義するのに使うシンボルの宣言
+
     P = [Symbol('P' + str(i)) for i in range(N+1)]
     px = [var('px'+str(i)) for i in range(N+1)]
     py = [var('py'+str(i)) for i in range(N+1)]
@@ -622,7 +641,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     dy_ = [var('dy_'+str(i)) for i in range(N+1)]
     
     # inf データの部分を補完する
-    points = eraseinf(points)
+    # points = eraseinf(points)
     
     for i in range(N+1):
         P[i] = Matrix([px[i],py[i]]) 
