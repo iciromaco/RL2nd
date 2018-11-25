@@ -587,9 +587,10 @@ def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
         diffpara = 0
         for i in range(len(tpara)) :
             diffpara += np.sqrt((tpara[i]-tpara0[i])**2)
+        diffpara = diffpara/len(tpara)
         if debugmode:
             print("diffpara",diffpara)
-        if diffpara < precPara:
+        if diffpara < precPara/100:
             break
     
     return np.array(cpx),np.array(cpy),bezresX,bezresY,tpara
@@ -732,9 +733,10 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         for i in range(len(tpara)) :
             diffpara += np.sqrt((tpara[i]-tpara0[i])**2) # 変化量の合計
         print(".",end='')
+        diffpara = diffpara/len(tpara)
         if debugmode:
             print("TRY",trynum,"diffpara",diffpara,diffpara0)
-        if diffpara < precPara*1.03**trynum: # 収束しない時のために、条件を徐々に下げていく
+        if diffpara < precPara/100*1.03**trynum: # 収束しない時のために、条件を徐々に下げていく
             break
     print("o",end="")
         
