@@ -597,6 +597,20 @@ def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
     # cpx,cpy → ４つの制御点、bezresX,bezresY ベジエ曲線の定義式
     # tpara 制御点
 
+# 解なしの部分に np.inf が入っているのでその抜けを前後から補完推定してデータを埋める
+def eraseinf(plist):
+    while np.sum(plist) == np.inf: # 無限を含むなら除去を繰り返す
+        for i in range(len(plist)):
+            if np.sum(plist[i]) == np.inf :
+                if (i !=0 and i !=len(plist)-1) and np.sum(plist[i-1]+plist[i+1]) != np.inf: # 当該は無限で、前後は無限ではない場合
+                    plist = np.r_[plist[0:i],[(plist[i-1]+plist[i+1])/2],plist[i+1:]]
+                elif len(plist[i:])>=2 and np.sum(plist[i+1]+plist[i+2]) != np.inf:
+                    plist = np.r_[plist[0:i],[plist[i+2]-2*(plist[i+2]-plist[i+1])],plist[i+1:]]
+                elif len(plist[0:i])>=2 and np.sum(plist[i-1]+plist[i-2]) != np.inf:
+                    plist = np.r_[plist[0:i],[plist[i-2]-2*(plist[i-2]-plist[i-1])],plist[i+1:]]
+    return plist
+    
+    
 #  (14-2) N次ベジエフィッティング
 def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     # order 次数、openmode: 両端点フリー、Falseの時は両端点固定
@@ -606,6 +620,9 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     py = [var('py'+str(i)) for i in range(N+1)]
     dx_ = [var('dx_'+str(i)) for i in range(N+1)]
     dy_ = [var('dy_'+str(i)) for i in range(N+1)]
+    
+    # inf データの部分を補完する
+    points = eraseinf(points)
     
     for i in range(N+1):
         P[i] = Matrix([px[i],py[i]]) 
