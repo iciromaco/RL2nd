@@ -1,6 +1,7 @@
+
 import numpy as np
 import matplotlib
-# matplotlib.use('Agg') # 表示しないモード。バッチ処理する場合、画像表示が多くなりすぎて　notebooke の制限で途中で止まってしまう。
+matplotlib.use('Agg') # 表示しないモード。バッチ処理する場合、画像表示が多くなりすぎて　notebooke の制限で途中で止まってしまう。
 import matplotlib.pyplot as plt
 # %matplotlib inline
 import cv2
@@ -18,7 +19,15 @@ from rdlib2 import *
 
 import datetime
 import time
+
 import os
+
+# バッチ司令ファイルの読み込み
+df = pd.read_excel('自動計測データ.xlsx')
+# df = pd.read_csv('画像リストUTF8.csv', sep=',')
+df.head(5)
+
+
 
 UNIT = 256
 
@@ -29,9 +38,6 @@ SHRINK = 0.8 # 0.75 # 収縮膨張で形状を整える時のパラメータ
 GAUSSIAN_RATE1= 0.2 # 先端位置を決める際に使うガウスぼかしの程度を決める係数
 GAUSSIAN_RATE2 = 0.1 # 仕上げに形状を整えるためのガウスぼかしの程度を決める係数
 
-# バッチ司令ファイルの読み込み
-# df = pd.read_excel('自動計測データ.xlsx')
-# df = pd.read_csv('画像リストUTF8.csv', sep=',')
 
 # ベジエ曲線あてはめ、仮中心線の抽出
 def preGetLRdata(tlevel = 10, blevel=90,bracket=1):
@@ -47,6 +53,9 @@ def preGetLRdata(tlevel = 10, blevel=90,bracket=1):
     canvas[0:cutHead,:]=np.zeros((cutHead,rdimg.shape[1])) # 上5%をマスク
     canvas[cutBottom+1:,:]=np.zeros((rdimg.shape[0]-(cutBottom+1),rdimg.shape[1]))  # 下5%をマスク
     cntl,cntr = segmentLR0(canvas,bracket=bracket)
+
+    print("左輪郭点の数 ", len(cntl),"　右輪郭点の数　", len(cntr))
+    
     return cntl,cntr
     
 # 左右セグメントを含む画像から左右の輪郭をえる
@@ -90,13 +99,28 @@ def cntPair2bez(cntl,cntr,N=3,n_samples=20,precPara=0.01, samplemode = 0, openmo
         cntR = np.r_[cntR[0:dmax_index],cntr[np.array(list(map(int,np.linspace(original_indexR, len(cntr)-1,2*(n_samples-dmax_index)))))]]
     
     # 左右をそれぞれベジエ 曲線で近似し、その平均として中心軸を仮決定
-    datal = cpxl,cpyl,bezXl,bezYl,tpl = fitBezierCurveN(cntL,precPara=precPara,N=N,openmode=openmode,debugmode=debugmode)
-    datar = cpxr,cpyr,bezXr,bezYr,tpr = fitBezierCurveN(cntR,precPara=precPara,N=N,openmode=openmode,debugmode=debugmode)
+    datal = resultL,cpxl,cpyl,bezXl,bezYl,tpl = fitBezierCurveN(cntL,precPara=precPara,N=N,openmode=openmode,debugmode=debugmode)
+    datar = resultR,cpxr,cpyr,bezXr,bezYr,tpr = fitBezierCurveN(cntR,precPara=precPara,N=N,openmode=openmode,debugmode=debugmode)
+    if not resultL or not resultR: # ベジエ 近似に失敗した
+        return False,None,None,None, None,None,None,None,None
     bezXc,bezYc = (bezXl+bezXr)/2,(bezYl+bezYr)/2
     cpl,cpr,cpc = (cpxl,cpyl),(cpxr,cpyr),((cpxl+cpxr)/2,(cpyl+cpyr)/2)
     bezL,bezR,bezC = (bezXl,bezYl),(bezXr,bezYr),(bezXc,bezYc)
-    return cpl,cpr,cpc, bezL,bezR,bezC,cntL,cntR
-    
+    return True,cpl,cpr,cpc, bezL,bezR,bezC,cntL,cntR
+
+# 解なしの部分に np.inf が入っているリストから np.inf の部分を前後で補完推定してデータを埋める
+def eraseinf(plist):
+    while np.sum(plist) == np.inf: # 無限を含むなら除去を繰り返す
+        for i in len(plist):
+            if np.sum(plist[i]) == np.inf: 
+                if (i !=0 and i !=len(plist)-1) and np.sum(plist[i-1]+plist[i+1]) != np.inf: # 当該は無限で、前後は無限ではない場合
+                    plist = np.r_[plist[0:i],[(plist[i-1]+plist[i+1])/2],plist[i+1:]]
+                elif len(p[i:])>=2 and np.sum(p[i+1]+p[i+2]) != np.inf:
+                    plist = np.r_[plist[0:i],[plist[i+2]-2*(plist[i+2]-plist[i+1])],plist[i+1:]]
+                elif len(p[0:i])>=2 and num.sum(p[i-1]+p[i-2]) != np.inf:
+                    plist = np.r_[plist[0:i],[plist[i-2]-2*(plist[i-2]-plist[i-1])],plist[i+1:]]
+    return plist
+
 # 結果の描画
 def drawBez2(savepath,bezL=None,bezR=None,bezC=None,cpl=None,cpr=None,cpc=None, 
              cntL=[],cntR=[],cntC=None, ladder=None,PosL=[],PosR=[],PosC=[],n_samples=20,saveImage=False):
@@ -219,7 +243,12 @@ def reGetCntPair(cpl,cpr,bezC,CAPCUT=0,TAILCUT=0):
     canvas =  cv2.circle(canvas,(int(x11_B),int(y11_B)),int(dia_B),0,-1) # 黒で円を描いて削る
     
     flag = True
-    while True:    
+    trycount = 0
+    while True: 
+        trycount = trycount+1
+        if trycount > 10:
+            print("TRY over 10 times. Something wrong. Please check.")
+            break
         # 輪郭検出すれば２つの輪郭が見つかるはず。
         _, contours, hierarchy = cv2.findContours(canvas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         # 線図形の輪郭は中間で折り返しになっている
@@ -234,9 +263,12 @@ def reGetCntPair(cpl,cpr,bezC,CAPCUT=0,TAILCUT=0):
                 cntL,cntR = cnt1,cnt0
             else:
                 cntR,cntL = cnt1,cnt0
-            if len(cntL)/len(cntR) > 0.9 and  len(cntR)/len(cntL) > 0.9: # 左右の輪郭長の差が１０％以内
+            
+            if  len(cntL)+len(cntR) > 300 and len(cntL)/len(cntR) > 0.5 and  len(cntR)/len(cntL) > 0.5  \
+                    or len(cntL)+len(cntR) > 150 and len(cntL)/len(cntR) > 0.8 and  len(cntR)/len(cntL) > 0.8:
                 break
-            # else 偏りが大きすぎる場合、もう少し削った方が良い
+            # 通常は左右の輪郭長の和は５００近い、それより少ないなら片方が抽出失敗している。
+            # 意図的に半分削ったような場合は 150以上であり、バランスが取れているはずなので比は 0.8 程度以上欲しい
         # 輪郭が２つ出ないとすれば、１つ、２つでここにくる時は偏りがある場合、
         if flag:
             dia_U += 2
@@ -304,9 +336,10 @@ def crossPoints2(x0,y0,dx,dy):
         canvas2 = cv2.line(canvas2,(int(float(lx)),int(float(ly))),(int(float(rx)),int(float(ry))),1,2) # 幅3（2*2-1）の直線を明るさ１で描く
         canvas = canvas1 + canvas2
         cross_pointsL = np.where(canvas[:,:int(x0)]==2) # 左の交点　　　重なった場所は値が２となっている.
-        crpLy,crpLx= np.average(cross_pointsL,axis=1) if len(cross_pointsL[0]) != 0 else (np.inf,np.inf )  # その平均座標 が左側の交点
+        crpLy,crpLx= np.average(cross_pointsL,axis=1) if len(cross_pointsL[0]) != 0 else (np.inf,np.inf)  # その平均座標 が左側の交点
         cross_pointsR = np.where(canvas[:,int(x0):]==2) # 右の交点　　　重なった場所は値が２となっている.
         crpRy,crpRx= np.average(cross_pointsR,axis=1) if len(cross_pointsR[0]) != 0  else (np.inf,np.inf) # その平均座標 が右側の交点
+        
         return (crpLx,crpLy),(crpRx+int(x0),crpRy)
     
 # 左右のベジエ曲線の平均関数により中心軸のサンプル点を生成し、それをベジエ曲線で近似する関数。
@@ -318,8 +351,10 @@ def getcenterBez(bezL,bezR,C=3,precPara2=0.01,n_samples = 20, openmode=False,deb
         # 基本的にはこれが中心軸を表すが、5次だと両端に弊害が現れることが多いのでサンプル点を生成して再近似する
         csamples = [[float(bezXc.subs(t,i)),float(bezYc.subs(t,i))] for i in np.linspace(0, 1, n_samples)] # サンプル点を生成
         csamples = np.array(csamples)
-        cpxc,cpyc,bezXc,bezYc,tpc = fitBezierCurveN(csamples,precPara=precPara2,N=C,openmode=openmode,debugmode=debugmode)
-        return (cpxc,cpyc),[bezXc,bezYc]
+        result,cpxc,cpyc,bezXc,bezYc,tpc = fitBezierCurveN(csamples,precPara=precPara2,N=C,openmode=openmode,debugmode=debugmode)
+        if not result: # ベジエ 近似に失敗した。
+            return False, None, None
+        return result,(cpxc,cpyc),[bezXc,bezYc]
     
 # 中心軸の垂直断面幅を求める測定点を求める　レガシーとして残すが、遅すぎるので使わない
 def calcWidthFunc(bezL,bezR,bezC,n_samples,samplemode=1,wcalcmode=1):  
@@ -476,7 +511,9 @@ def shapeReconstruction(savepath,PosL,PosR,PosC,bezL,bezR,bezC,cntl,cntr,C=4,pre
         radiusTable = np.array(radiusTable)
  
         #  形状をベジエ曲線で近似
-        cpxl,cpyl,shapeX,shapeY,_tpl = fitBezierCurveN(radiusTable,precPara=precPara,N=C)
+        result,cpxl,cpyl,shapeX,shapeY,_tpl = fitBezierCurveN(radiusTable,precPara=precPara,N=C)
+        if not result: # 近似に失敗した場合
+            return False,None,None,None,None,None,None,None,None
         # 最大径とその位置を求める
         fx = np.array([float(shapeX.subs(t,i)) for i in np.linspace(0,1,101)]) # 0.01刻み
         fy = np.array([float(shapeY.subs(t,i)) for i in np.linspace(0,1,101)])
@@ -597,7 +634,6 @@ def pltsaveimage(savepath,prefix,showImage=False):
         plt.savefig(savepath)
         if showImage:
             plt.show() # バッチ時に表示すると jupyter notebook では表示数の制限で途中で止まる。
-
 def automeasure(datafile = '自動計測データ.xlsx', savedir='伸身シルエット', target=1, saveImage=True):
     # savedir 保存先
     # smooth 領域抽出に先立って画像をぼかすかどうかのフラグ ぼかす場合は excel ファイルの ssize 欄の数値が適用される
@@ -620,10 +656,10 @@ def automeasure(datafile = '自動計測データ.xlsx', savedir='伸身シル�
             dCCT0 = idata['CCUT0'] # 最初の上部削減％　 defailt 5%ライン
             dTCT0 = idata['TCUT0'] # 最初の下部削減％ default 95%ライン
             dROT = idata['ROT'] # 自動で決める向きではうまくいかない場合の回転量指示　左回りが正
-            dM = idata['M']
-            dN = idata['N']
-            dC = idata['C']
-            dL = idata['L']
+            dM = int(idata['M'])
+            dN = int(idata['N'])
+            dC = int(idata['C'])
+            dL = int(idata['L'])
             dprecPara1= idata['precPara1']
             dprecPara2 = idata['precPara2']
             dCAPCUT = idata['CAPCUT']
@@ -694,6 +730,12 @@ def approxAndMeasurement(savepath,radish,M=4,N=5,C=4,L=5,cutC=0,cutB=95, \
         for i,(px,py) in enumerate(zip(list(CPX),list(CPY))):
             df.loc[radish,prefix+'X'+str(i)]=px
             df.loc[radish,prefix+'Y'+str(i)]=py
+            
+    def abandone():
+        print("Something wrong... abandane.")
+        datetimenow = '{0:%Y/%m/%d/%H:%M}'.format(datetime.datetime.now()) # 処理した日時
+        df.loc[radish,'処理対象']="Need Change Condition "+datetimenow
+        return
     
     print("\n処理開始時刻",'{0:%Y/%m/%d/%H:%M}\n'.format(datetime.datetime.now()))
     
@@ -704,16 +746,24 @@ def approxAndMeasurement(savepath,radish,M=4,N=5,C=4,L=5,cutC=0,cutB=95, \
     
     print('ベジエあてはめ１…',end='')
     ## ベジエ曲線あてはめ（パス１）
-    cpl,cpr,cpc, bezL,bezR,bezC,cntL,cntR = cntPair2bez(cntl,cntr,N=M, precPara=precPara1,samplemode = 0,openmode=openmode,debugmode=debugmode)
-    print('\n輪郭線左右分割…',end='')
-    ## 中心軸をもとにしてより妥当な左右の輪郭をえる
+    result,cpl,cpr,cpc, bezL,bezR,bezC,cntL,cntR = cntPair2bez(cntl,cntr,N=M, precPara=precPara1,samplemode = 0,openmode=openmode,debugmode=debugmode)
+    if not result: # ベジエ 近似に失敗したのでこの個体は諦める
+        abandone()
+        return  
     
     displaytime(starttime)
     
-    cntl,cntr,TopP,_ = reGetCntPair(cpl,cpr,bezC,CAPCUT=CAPCUT,TAILCUT=TAILCUT)    
+    print('\n輪郭線左右分割…',end='')
+    ## 中心軸をもとにしてより妥当な左右の輪郭をえる
+    cntl,cntr,TopP,_ = reGetCntPair(cpl,cpr,bezC,CAPCUT=CAPCUT,TAILCUT=TAILCUT) 
+    
     print('ベジエあてはめ2…',end='')
     ## ベジエ曲線あてはめ （パス２）
-    cpl,cpr,cpc, bezL,bezR,bezC,cntL,cntR= cntPair2bez(cntl,cntr,N=N,n_samples=n_samples, samplemode = samplemode, precPara=precPara2, openmode=openmode,debugmode=debugmode)
+    result,cpl,cpr,cpc, bezL,bezR,bezC,cntL,cntR= cntPair2bez(cntl,cntr,N=N,n_samples=n_samples, samplemode = samplemode, precPara=precPara2, openmode=openmode,debugmode=debugmode)
+    if not result: # ベジエ 近似に失敗したのでこの個体は諦める
+        abandone()
+        return
+    
     CPrecord(cpl,'LP')
     CPrecord(cpr,'RP')
     
@@ -721,7 +771,11 @@ def approxAndMeasurement(savepath,radish,M=4,N=5,C=4,L=5,cutC=0,cutB=95, \
  
     print('\n左右平均点へのベジエあてはめ１',end='')
     ## 中心軸へのベジエあてはめ
-    cpc2,bezC2  = getcenterBez(bezL,bezR,C=C,precPara2=precPara2,n_samples = n_samples, openmode=openmode,debugmode=debugmode)
+    result, cpc2,bezC2  = getcenterBez(bezL,bezR,C=C,precPara2=precPara2,n_samples = n_samples, openmode=openmode,debugmode=debugmode)
+    if not result: # ベジエ 近似に失敗したのでこの個体は諦める
+        abandone()
+        return
+    
     CPrecord(cpc2,'CP')    
     print('\n中心軸→幅→中心軸の緩和的繰り返しを２回…',end='')
        
@@ -735,7 +789,10 @@ def approxAndMeasurement(savepath,radish,M=4,N=5,C=4,L=5,cutC=0,cutB=95, \
         PosL,PosR,PosC = calcWidthFunc2(bezC2,n_samples=n_samples2)    
         # drawBez2(savepath,bezL,bezR,bezC=bezC2,ladder='normal',PosL=PosL,PosR=PosR,PosC=PosC, n_samples=n_samples2,saveImage=saveImage) 
         ## 中心軸を再決定 
-        cpxc,cpyc,bezXc,bezYc,_tpc = fitBezierCurveN(PosC,precPara=precPara2,N=C,openmode=openmode,debugmode=debugmode)
+        result,cpxc,cpyc,bezXc,bezYc,_tpc = fitBezierCurveN(PosC,precPara=precPara2,N=C,openmode=openmode,debugmode=debugmode)
+        if not result: # ベジエ 近似に失敗したのでこの個体は諦める
+            abandone()
+            return
         bezC2 = (bezXc,bezYc)
 
     displaytime(starttime)
@@ -745,8 +802,12 @@ def approxAndMeasurement(savepath,radish,M=4,N=5,C=4,L=5,cutC=0,cutB=95, \
     drawBez2(savepath,bezL,bezR,bezC=bezC2,ladder='normal',PosL=PosL,PosR=PosR,PosC=PosC, n_samples=n_samples2,saveImage=saveImage) 
     print('伸身形状復元…',end='')
     ## 伸身形状復元＆計測
-    CPs,shapeX,shapeY,radishLength, maxDia ,maxpos,t_max,t_bottom = shapeReconstruction(savepath,PosL,PosR,PosC,bezL,bezR,bezC2,cntl,cntr,C=L,precPara=precPara2,\
+    result, CPs,shapeX,shapeY,radishLength, maxDia ,maxpos,t_max,t_bottom = shapeReconstruction(savepath,PosL,PosR,PosC,bezL,bezR,bezC2,cntl,cntr,C=L,precPara=precPara2,\
                                                                          showImage=showImage,saveImage=saveImage)
+    if not result: # ベジエ 近似に失敗したのでこの個体は諦める
+        abandone()
+        return
+    
     df.loc[radish,'最大径']=maxDia
     df.loc[radish,'長さ']=radishLength
     df.loc[radish,'最大径位置']=maxpos
@@ -771,7 +832,9 @@ def approxAndMeasurement(savepath,radish,M=4,N=5,C=4,L=5,cutC=0,cutB=95, \
     df.to_excel('自動計測データ.xlsx', index=True, header=True)
     
     print("\n処理完了!! \n",datetimenow)
+    
+    return True
 
 if __name__ == '__main__':
     # すベて実行
-    automeasure('自動計測データ.xlsx',savedir='伸身シルエットtest',target=3)
+    automeasure('自動計測データ2.xlsx',savedir='伸身シルエットtest',target=3)
