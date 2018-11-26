@@ -312,6 +312,8 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, norotati
     _ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)    
     _image, contours, _hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
+    img2 = np.zeros_like(img) 
+    img = cv2.drawContours(img2, [cnt], -1, 255, thickness=-1) # 最も長い輪郭だけを描きなおす
     # 輪郭線全体を直線近似して向きを決定する
     [vx,_vy,_x,_y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
     
@@ -364,10 +366,12 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, norotati
     # 最後にもう一度だけガウスぼかしを適用してシルエットを滑らかにする
     ksize = 2*int((GAUSSIAN_RATE2*UNIT)/2)+1 # ぼかし量  元の図形の幅に応じて決める
     canvas = cv2.GaussianBlur(canvas,(ksize,ksize),0) # ガウスぼかしを適用
-    _ret,resultimg = cv2.threshold(canvas, 128, 255, cv2.THRESH_BINARY) # ２値化
-    #_image, contours, _hierarchy = cv2.findContours(resultimg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    #cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
-    #resultimg = cv2.drawContours(resultimg, [cnt], -1, 255, thickness=-1)
+    # ２値化し、最大の輪郭だけを抜き出して描いておく
+    _ret,bwimg = cv2.threshold(canvas, 128, 255, cv2.THRESH_BINARY) # ２値化
+    _image, contours, _hierarchy = cv2.findContours(bwimg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
+    resultimg = np.zeros_like(bwimg) 
+    resultimg = cv2.drawContours(resultimg, [cnt], -1, 255, thickness=-1)
     
     if showResult:
         plt.figure(figsize=(7,10),dpi=100)
@@ -740,7 +744,10 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         else : 
             resultX = solve([dx_[i] for i in range(N+1)],[px[i] for i in range(N+1)])
             resultY = solve([dy_[i] for i in range(N+1)],[py[i] for i in range(N+1)])
-                        
+        
+        if len(resultX) == 0 or len(resultY) == 0: # 方程式が解けない　非常にまれなケース
+            return False,np.array([]),np.array([]),None,None,None
+        
         # 解をベジエの式に代入
         if not openmode:
             bezresX = bezN[0].subs([(px[0],points[0][0]),(px[-1],points[-1][0])])
@@ -776,7 +783,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
             break
     print("o",end="")
         
-    return np.array(cpx),np.array(cpy),bezresX,bezresY,tpara
+    return True,np.array(cpx),np.array(cpy),bezresX,bezresY,tpara
     # cpx,cpy 制御点、bezresX,bezresY ベジエ曲線の定義式
     # tpara 制御点   
     
