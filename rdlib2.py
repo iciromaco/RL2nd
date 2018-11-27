@@ -645,7 +645,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     dy_ = [var('dy_'+str(i)) for i in range(N+1)]
     
     # inf データの部分を補完する
-    # points = eraseinf(points)
+    points = eraseinf(points)
     
     for i in range(N+1):
         P[i] = Matrix([px[i],py[i]]) 
