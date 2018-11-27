@@ -305,18 +305,46 @@ def getUpperCoGandCoC(src):
 # (12) シルエット画像の標準化
 # 画像サイズをある程度揃えたい
 
-def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, norotation = False, showResult=False):
-    # src 画像, unitSize 長軸をこの長さに正規化、thres 方向のx成分がこれ以下なら回転処理を施さない  setrotation 強制回転角
-    
-    # 全体的な方向がY軸に沿っているならそのまま、そうでなければ重心と先端を合わせるように回転　しきい値　thres 0.25 は約１５度の傾き
-    _ret,img = cv2.threshold(src,127,255,cv2.THRESH_BINARY)    
+# ２値画像が前提。最大白領域のみを抽出。margincut=True なら、バウンディングボックスで切り出す。
+def getMaxAreaComponents(img, margincut=True):  
+    _ret,img = cv2.threshold(img, 128, 255, cv2.THRESH_BINARY) # ２値化
     _image, contours, _hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
-    img2 = np.zeros_like(img) 
-    img = cv2.drawContours(img2, [cnt], -1, 255, thickness=-1) # 最も長い輪郭だけを描きなおす
+    resultimg = np.zeros_like(img) 
+    resultimg = cv2.drawContours(resultimg, [cnt], -1, 255, thickness=-1) 
+    if margincut:
+        _nLabels, labelImages, data, _center = cv2.connectedComponentsWithStats(resultimg)
+        ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
+        img = np.zeros_like(resultimg) 
+        img[labelImages==ami]=255# 最大面積の画素のみ抽出
+        resultimg = img[data[ami][1]:data[ami][1]+data[ami][3],data[ami][0]:data[ami][0]+data[ami][2]] # マージンなしで切り出して返す
+    return resultimg
+  
+
+# 長辺の1.5倍サイズの枠の中央に対象を配置した画像を返す
+def makeUnitImage(img,unitSize=UNIT):
+    # 長辺が UNIT ピクセルになるよう縮小し、(1.5xUNIT)x(1.5xUNIT)の画像の中央に配置する。
+    h,w = img.shape[:2]
+    s_r = unitSize/w if w > h else unitSize/h #  縮小率    
+    rsh,rsw = int(s_r*h),int(s_r*w) # リサイズ後のサイズ
+    x0 = int((1.5*unitSize-rsw)/2) # はめ込みの基準点
+    y0 = int((1.5*unitSize-rsh)/2)
+    canvas = np.zeros((int(1.5*unitSize),int(1.5*unitSize)),np.uint8) # キャンバスの確保
+    canvas[y0:y0+rsh,x0:x0+rsw] = cv2.resize(img,(rsw,rsh)) # リサイズして中央にはめ込み
+    return canvas
+
+def getstandardShape(src, unitSize=UNIT, krate=GAUSSIAN_RATE2,thres = 0.25, setrotation = 0, norotation = False):
+    # src 画像, unitSize 長軸をこの長さに正規化、thres 方向のx成分がこれ以下なら回転処理を施さない  setrotation 強制回転角
+    img = getMaxAreaComponents(src, margincut=True)
+    # 長辺が UNIT ピクセルになるよう縮小し、(1.5xUNIT)x(1.5xUNIT)の画像の中央に配置する。   
+    img = makeUnitImage(img,unitSize=unitSize*2) # ヒゲがあるのでこの時点では大きめにして作業を進める
+    # 輪郭抽出
+    _image, contours, _hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
+    
     # 輪郭線全体を直線近似して向きを決定する
     [vx,_vy,_x,_y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
-    
+
     if norotation or np.abs(vx) <= thres and setrotation == 0: # 非回転が指定されているか、回転角の指定がなく、角度が浅いなら回転させない
         img = roteteAndCutMargin(img,0,0,0)
     else:
@@ -331,52 +359,23 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, norotati
                 deg = 0
         # 重心と先端を結ぶラインがY軸となるように回転し余白はカット
         img = roteteAndCutMargin(img,deg,c_x,c_y)
-        
+
     # 大きさを標準化したいが、無駄に根が長いと相対的に重要部分が小さくなるのでまず根を削る
     # 作業用のマージンを確保
-    img5 = makemargin(img) 
-    #if showResult: refimg = img5.copy() # 確認用元画像
+    tmpimg = makemargin(img)     
     # 少し形を整えておく RDreform は上の方で定義してある
-    img5 = RDreform(img5)
-
-    # 最大面積の領域を抜き出す。ゴミ領域があるかもしれないので念のため。
-    #_nLabels, _labelImages, data, _center = cv2.connectedComponentsWithStats(img5)
-    #ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
-    #img5 = img5[data[ami][1]:data[ami][1]+data[ami][3],data[ami][0]:data[ami][0]+data[ami][2]]
-    #if showResult: refimg = refimg[data[ami][1]:,data[ami][0]:data[ami][0]+data[ami][2]]
-  
-    # 長辺が UNIT ピクセルになるよう縮小し、(1.5xUNIT)x(1.5xUNIT)の画像の中央に配置する。
-    h,w = img5.shape[:2]
-    s_r = UNIT/w if w > h else UNIT/h #  縮小率    
-    rsh,rsw = int(s_r*h),int(s_r*w) # リサイズ後のサイズ
-    x0 = int((1.5*UNIT-rsw)/2) # はめ込みの基準点
-    y0 = int((1.5*UNIT-rsh)/2)
-    canvas = np.zeros((int(1.5*UNIT),int(1.5*UNIT)),np.uint8) # キャンバスの確保
-    canvas[y0:y0+rsh,x0:x0+rsw] = cv2.resize(img5,(rsw,rsh)) # リサイズして中央にはめ込み
-
-    # 確認用画像も同じリサイズを適用　確認用の場合は尻尾の部分を残して表示したいので少し面倒
-    if showResult: 
-        refimg2 = np.zeros((int(1.5*UNIT),int(1.5*UNIT)),np.uint8)
-        refimg = cv2.resize(refimg,(rsw,int(s_r*refimg.shape[0])))
-        if int(1.5*UNIT) - y0 > refimg.shape[0]:
-            refimg2[y0:y0+refimg.shape[0],x0:x0+rsw] = refimg
-        else:
-            refimg2[y0:int(1.5*UNIT),x0:x0+rsw] = refimg[0:int(1.5*UNIT)-y0,:]
+    tmpimg = RDreform(tmpimg)
+    # reform で根が削られているのであらためてバウンディングボックスで囲んで取り出す。
+    tmpimg = getMaxAreaComponents(tmpimg, margincut=True)  
+    # 指定サイズに拡大縮小
+    tmpimg = makeUnitImage(tmpimg,unitSize=unitSize) 
             
     # 最後にもう一度だけガウスぼかしを適用してシルエットを滑らかにする
-    ksize = 2*int((GAUSSIAN_RATE2*UNIT)/2)+1 # ぼかし量  元の図形の幅に応じて決める
-    canvas = cv2.GaussianBlur(canvas,(ksize,ksize),0) # ガウスぼかしを適用
+    ksize = 2*int(( krate*unitSize)/2)+1 # ぼかし量  元の図形の幅に応じて決める
+    tmpimg = cv2.GaussianBlur(tmpimg,(ksize,ksize),0) # ガウスぼかしを適用
     # ２値化し、最大の輪郭だけを抜き出して描いておく
-    _ret,bwimg = cv2.threshold(canvas, 128, 255, cv2.THRESH_BINARY) # ２値化
-    _image, contours, _hierarchy = cv2.findContours(bwimg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    cnt = contours[np.argmax([len(c) for c in contours])] # 最も長い輪郭
-    resultimg = np.zeros_like(bwimg) 
-    resultimg = cv2.drawContours(resultimg, [cnt], -1, 255, thickness=-1)
+    resultimg = getMaxAreaComponents(tmpimg, margincut=True)
     
-    if showResult:
-        plt.figure(figsize=(7,10),dpi=100)
-        plt.imshow(draw2(refimg2,resultimg))
-        
     return resultimg
 
 # (13) 輪郭点のサンプリング
@@ -643,10 +642,10 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     py = [var('py'+str(i)) for i in range(N+1)]
     dx_ = [var('dx_'+str(i)) for i in range(N+1)]
     dy_ = [var('dy_'+str(i)) for i in range(N+1)]
-    
+ 
     # inf データの部分を補完する
     points = eraseinf(points)
-    
+ 
     for i in range(N+1):
         P[i] = Matrix([px[i],py[i]]) 
     
@@ -656,14 +655,13 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     # 最小自乗法の目的関数の一般式
     def lossfunc(listA,listB):
         return sum([loss1.subs([(s,a),(t,b)]) for (a,b) in zip(listA,listB)])/2
-    
     v = var('v')
     # N次のベジエ曲線の定義式制御点 P0~PN とパラメータ　　t　の関数として定義
     v = 1-t
     bezN = Matrix([0,0])
     for i in range(0,N+1):
         bezN = bezN + binomial(N,i)*v**(N-i)*t**i*P[i]
-    
+
     # 初期の推定パラメータの決定
     ## サンプル点間の差分を求める
     points1 = points[1:] #  ２つ目から後ろのサンプル点
