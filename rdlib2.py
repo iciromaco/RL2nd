@@ -335,15 +335,15 @@ def getstandardShape(src, unitSize=UNIT, thres = 0.25, setrotation = 0, norotati
     # 大きさを標準化したいが、無駄に根が長いと相対的に重要部分が小さくなるのでまず根を削る
     # 作業用のマージンを確保
     img5 = makemargin(img) 
-    if showResult: refimg = img5.copy() # 確認用元画像
+    #if showResult: refimg = img5.copy() # 確認用元画像
     # 少し形を整えておく RDreform は上の方で定義してある
     img5 = RDreform(img5)
 
     # 最大面積の領域を抜き出す。ゴミ領域があるかもしれないので念のため。
-    _nLabels, _labelImages, data, _center = cv2.connectedComponentsWithStats(img5)
-    ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
-    img5 = img5[data[ami][1]:data[ami][1]+data[ami][3],data[ami][0]:data[ami][0]+data[ami][2]]
-    if showResult: refimg = refimg[data[ami][1]:,data[ami][0]:data[ami][0]+data[ami][2]]
+    #_nLabels, _labelImages, data, _center = cv2.connectedComponentsWithStats(img5)
+    #ami = np.argmax(data[1:,4])+1 # もっとも面積の大きい連結成分のラベル番号　（１のはずだが念の為）
+    #img5 = img5[data[ami][1]:data[ami][1]+data[ami][3],data[ami][0]:data[ami][0]+data[ami][2]]
+    #if showResult: refimg = refimg[data[ami][1]:,data[ami][0]:data[ami][0]+data[ami][2]]
   
     # 長辺が UNIT ピクセルになるよう縮小し、(1.5xUNIT)x(1.5xUNIT)の画像の中央に配置する。
     h,w = img5.shape[:2]
