@@ -374,7 +374,7 @@ def getstandardShape(src, unitSize=UNIT, krate=GAUSSIAN_RATE2,thres = 0.25, setr
     ksize = 2*int(( krate*unitSize)/2)+1 # ぼかし量  元の図形の幅に応じて決める
     tmpimg = cv2.GaussianBlur(tmpimg,(ksize,ksize),0) # ガウスぼかしを適用
     # ２値化し、最大の輪郭だけを抜き出して描いておく
-    resultimg = getMaxAreaComponents(tmpimg, margincut=True)
+    resultimg = getMaxAreaComponents(tmpimg, margincut=False)
     
     return resultimg
 
