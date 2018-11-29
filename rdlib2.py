@@ -507,7 +507,7 @@ def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
     def refineTpara(pl,linefunc):
         (funcX,funcY) = linefunc # funcX,funcY は t の関数
         # 各サンプル点に最も近い曲線上の点のパラメータ t を求める。
-        trange = np.arange(-0.1,1.1,0.01) # 推定範囲は -0.1 〜　１．１
+        trange = np.arange(-0.1,1.1,0.005) # 推定範囲は -0.1 〜　１．１
         onpoints = [[s,funcX.subs(t,s),funcY.subs(t,s)] for s in trange] # 曲線上の点
         tpara = np.zeros(len(pl),np.float32) # 新しい 推定 t パラメータのリスト用の変数のアロケート
         refineTparaR(pl,tpara,0,len(pl),0,len(onpoints),onpoints)
@@ -622,12 +622,14 @@ def eraseinf(plist):
     while np.sum(plist) == np.inf: # 無限を含むなら除去を繰り返す
         for i in range(len(plist)):
             if np.sum(plist[i]) == np.inf :
+                print("欠",end="")
                 if (i !=0 and i !=len(plist)-1) and np.sum(plist[i-1]+plist[i+1]) != np.inf: # 当該は無限で、前後は無限ではない場合
                     plist = np.r_[plist[0:i],[(plist[i-1]+plist[i+1])/2],plist[i+1:]]
-                elif len(plist[i:])>=2 and np.sum(plist[i+1]+plist[i+2]) != np.inf:
+                elif len(plist[i:])>=3 and np.sum(plist[i+1]+plist[i+2]) != np.inf:
                     plist = np.r_[plist[0:i],[plist[i+2]-2*(plist[i+2]-plist[i+1])],plist[i+1:]]
                 elif len(plist[0:i])>=2 and np.sum(plist[i-1]+plist[i-2]) != np.inf:
                     plist = np.r_[plist[0:i],[plist[i-2]-2*(plist[i-2]-plist[i-1])],plist[i+1:]]
+    print("")
     return plist
     
     
@@ -679,7 +681,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     def refineTpara(pl,linefunc):
         (funcX,funcY) = linefunc # funcX,funcY は t の関数
         # 各サンプル点に最も近い曲線上の点のパラメータ t を求める。
-        trange = np.arange(-0.1,1.1,0.005) # 推定範囲は -0.1 〜　１．１
+        trange = np.arange(-0.1,1.1,0.01) # 推定範囲は -0.1 〜　１．１
         onpoints = [[s,funcX.subs(t,s),funcY.subs(t,s)] for s in trange] # 曲線上の点
         tpara = np.zeros(len(pl),np.float32) # 新しい 推定 t パラメータのリスト用の変数のアロケート
         refineTparaR(pl,tpara,0,len(pl),0,len(onpoints),onpoints)
