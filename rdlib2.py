@@ -1,3 +1,36 @@
+def assertglobal(params,verbose=False):
+    global CONTOURS_APPROX, HARRIS_PARA, CONTOURS_APPROX, SHRINK, \
+            HARRIS_PARA, GAUSSIAN_RATE1, GAUSSIAN_RATE2, UNIT, RPARA
+    for item in params:
+        if item == 'CONTOURS_APPROX':
+            CONTOURS_APPROX = params[item] # 輪郭近似精度
+        elif item == 'HARRIS_PARA':
+            HARRIS_PARA = params[item] # ハリスコーナー検出で、コーナーとみなすコーナーらしさの指標  1.0 なら最大値のみ
+        elif item == 'CONTOURS_APPROX' :
+            CONTOURS_APPROX = params[item] # 輪郭近似精度
+        elif item == 'SHRINK':
+            SHRINK = params[item] # 0.75 # 収縮膨張で形状を整える時のパラメータ
+        elif item == 'GAUSSIAN_RATE1':
+            GAUSSIAN_RATE1= params[item] # 先端位置を決める際に使うガウスぼかしの程度を決める係数
+        elif item == 'GAUSSIAN_RATE2':
+            GAUSSIAN_RATE2 = params[item] # 仕上げに形状を整えるためのガウスぼかしの程度を決める係数
+        elif item == 'UNIT':
+            UNIT = params[item] # 最終的に長い方の辺をこのサイズになるよう拡大縮小する
+        elif item == 'RPARA':
+            RPARA = params[item]# 見込みでサーチ候補から外す割合
+        if verbose:
+            print(item, "=", params[item])
+
+assertglobal(params = {
+    'HARRIS_PARA':1.0, # ハリスコーナー検出で、コーナーとみなすコーナーらしさの指標  1.0 なら最大値のみ
+    'CONTOURS_APPROX':0.0002, # 輪郭近似精度
+    'SHRINK':0.8, # 0.75 # 収縮膨張で形状を整える時のパラメータ
+    'GAUSSIAN_RATE1':0.2, # 先端位置を決める際に使うガウスぼかしの程度を決める係数
+    'GAUSSIAN_RATE2':0.1, # 仕上げに形状を整えるためのガウスぼかしの程度を決める係数
+    'UNIT':256, # 最終的に長い方の辺をこのサイズになるよう拡大縮小する
+    'RPARA':0.7 # 見込みでサーチ候補から外す割合
+})
+
 #  汎用の関数
 
 import numpy as np
@@ -24,7 +57,7 @@ def listimage(path='シルエット', needThum=False):
     
     # まずフォルダを全部リストアップ　→ folders
     folders = []
-    for x in directory:  
+    for x in directory:
         if os.path.isdir(path + '/'+x) and x[0] != '.' and x[0] !='_':  #パスに取り出したオブジェクトを足してフルパスに
             folders.append(path + '/'+x)
     # print(folders)
@@ -88,7 +121,7 @@ def mkparaimage(img1,img2):
     h2,w2 = img2.shape[:2]
     if img1.ndim == 2:
         img11 = np.zeros((h1,w1,3))
-        img11[:,:,0]=img11[:,:,1]=img11[:,:,2]=img1
+        img11[:,:,0] = img11[:,:,1]=img11[:,:,2]=img1
     else:
         img11=img1
     if img2.ndim == 2:
@@ -162,14 +195,6 @@ def getTerminalPsOnLine(x1,y1,x2,y2):
         s2 = int(x1 - 1000*dx)
         t2 = int(y1 - 1000*dy)
         return s1,t1,s2,t2
-
-CONTOURS_APPROX = 0.005 # 輪郭近似精度
-HARRIS_PARA = 1.0 # ハリスコーナー検出で、コーナーとみなすコーナーらしさの指標  1.0 なら最大値のみ
-CONTOURS_APPROX = 0.0002 # 輪郭近似精度
-SHRINK = 0.9 # 0.75 # 収縮膨張で形状を整える時のパラメータ
-GAUSSIAN_RATE1= 0.2 # 先端位置を決める際に使うガウスぼかしの程度を決める係数
-GAUSSIAN_RATE2 = 0.1 # 仕上げに形状を整えるためのガウスぼかしの程度を決める係数
-UNIT = 256 # 最終的に長い方の辺をこのサイズになるよう拡大縮小する
     
 # (8) ガウスぼかし、膨張収縮、輪郭近似で形状を整える関数
 # 形状の細かな変化をガウスぼかし等でなくして大まかな形状にする関数
@@ -379,8 +404,6 @@ def getstandardShape(src, unitSize=UNIT, krate=GAUSSIAN_RATE2,thres = 0.25, setr
     return resultimg
 
 # (13) 輪郭点のサンプリング
-SAMPLE_NUM=16  # 使用するサンプル点の数
-
 def threeLinesSeq(src, showImage =  False, n_samples=16): 
     global tupple
     _img,cnt,_hierarchy = cv2.findContours(src, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) #  あらためて輪郭を抽出
@@ -471,7 +494,7 @@ def threeLinesSeq(src, showImage =  False, n_samples=16):
     return llist,rlist,clist,dmax
 
 # (14) ベジエフィッティング　（この関数は　firBezierCurveN があるのでもう使わないが、古いプログラムのため残す）
-def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
+'''def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
     # mode = 2：両端固定、　mode =3 : 下のみ固定, mode4 :  全制御点自由
     # ベジエ曲線を定義するのに使うシンボルの宣言
     P = [Symbol('P' + str(i)) for i in range(4)]
@@ -616,7 +639,7 @@ def fitBezierCurve3(points,precPara=0.01,mode=2, debugmode=False):
     return np.array(cpx),np.array(cpy),bezresX,bezresY,tpara
     # cpx,cpy → ４つの制御点、bezresX,bezresY ベジエ曲線の定義式
     # tpara 制御点
-
+'''
 # 解なしの部分に np.inf が入っているのでその抜けを前後から補完推定してデータを埋める
 def eraseinf(plist):
     while np.sum(plist) == np.inf: # 無限を含むなら除去を繰り返す
@@ -631,7 +654,6 @@ def eraseinf(plist):
                     plist = np.r_[plist[0:i],[plist[i-2]-2*(plist[i-2]-plist[i-1])],plist[i+1:]]
     print("")
     return plist
-    
     
 #  (14-2) N次ベジエフィッティング
 def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
@@ -670,7 +692,8 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     ds = points1-points[:-1] # サンプル点間の差分ベクトル
     la = [np.sqrt(e[0]*e[0]+e[1]*e[1]) for e in ds] # サンプル点間の直線距離のリスト
     axlength = np.sum(la) # 折れ線近似による経路長
-    tpara0 = np.zeros(len(points),np.float32) # パラメータ格納配列
+    npoints = len(points)
+    tpara0 = np.zeros(npoints,np.float32) # パラメータ格納配列
     tpara = tpara0.copy()
     tpara[0]=0.0 # 最初の点のパラメータ推定値は０とする
     for i in range(len(la)):
@@ -678,10 +701,10 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     tpara = tpara/axlength # 全経路長で割ってパラメータとする　（０〜１）
 
     #  パラメトリック曲線　linefunc 上で各サンプル点に最寄りの点のパラメータを対応づける
-    def refineTpara(pl,linefunc):
+    def refineTparaN(pl,linefunc,npoints=50):
         (funcX,funcY) = linefunc # funcX,funcY は t の関数
         # 各サンプル点に最も近い曲線上の点のパラメータ t を求める。
-        trange = np.arange(-0.1,1.1,0.01) # 推定範囲は -0.1 〜　１．１
+        trange = np.arange(-0.1,1.1,1/(2*npoints)) # 推定範囲は -0.1 〜　１．１ サンプル数の2倍の候補点を設定
         onpoints = [[s,funcX.subs(t,s),funcY.subs(t,s)] for s in trange] # 曲線上の点
         tpara = np.zeros(len(pl),np.float32) # 新しい 推定 t パラメータのリスト用の変数のアロケート
         refineTparaR(pl,tpara,0,len(pl),0,len(onpoints),onpoints)
@@ -692,26 +715,45 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         if end - stt < 3 : # 残り３点未満なら全域サーチする
             left,right = smin,smax
         else:
-            left = smin+0.5*(smax-smin)*(n-stt)/(end-stt-1)
-            right= smax - 0.5*(smax-smin)*(end-n-1)/(end-stt-1)
-        left = (int(left-0.5)   if int(left-0.5) > smin else smin)
+            srange = smax-smin
+            left = smin + srange*((n-stt)/(end-stt) - RPARA/2)
+            left = smin+(n-stt) if left < smin+(n-stt) else left
+            right = smax - srange*((end-n)/(end-stt) - RPARA/2)
+            right = smax-(end-n) if right > smax-(end-n) else right
+        left = (int(left-0.5)   if int(left-0.5) > smin else smin) # 0.5 は　RPARAとは無関係なので注意
         right = (int(right+0.5) if int(right+0.5) < smax else smax)
         return left, right
-        
+       
     #  探索範囲内での対応づけ再帰関数
     # pl 点列、(stt,end) 推定対象範囲（番号）, (smin,smax) パラメータの探索範囲         
     def refineTparaR(pl,tpara,stt,end,smin,smax,onpoints):
         nmid = int((end+stt-1)/2) # 探索対象の中央のデータを抜き出す
         px,py = points[nmid] # 中央のデータの座標
-        smin1, smax1 = srange(nmid,stt,end,smin,smax) # サーチ範囲を決める
-        zahyo = (np.array(onpoints[smin1:smax1]).copy())[:,1:] # onpoints リストの座標部分のみ取り出し
-        differ = zahyo - np.array([px,py]) # 差分の配列
-        distance = [x*x+y*y for x,y in differ] # 自乗誤差の配列
-        nearest_i = smin1+np.argmin(distance) # 誤差最小のインデックス
-        if smax-nearest_i < end-nmid: # nmid より後の割り当てるべき点の数が、nearest_i より後の割り当て可能なパラメータ数より多くなる場合
-            nearest_i -= (end-nmid)-(smax-nearest_i) # 足らない分選ぶパラメータをシフト
-        if nearest_i - stt < nmid-stt:
-            nearest_i += (nmid-stt)-(nearest_i-stt)
+        smin1, smax1 = srange(nmid,stt,end,smin,smax) # 初期サーチ範囲を決める
+        if  smin1 == smax1 and stt == end:
+            nearest_i == smin1 # = smax1
+        else:
+            while True:
+                zahyo = (np.array(onpoints[smin1:smax1]).copy())[:,1:] # onpoints リストの座標部分のみ取り出し            
+                differ = zahyo - np.array([px,py]) # 差分の配列
+                distance = [x*x+y*y for x,y in differ] # 自乗誤差の配列
+                nearest_i = smin1+np.argmin(distance) # 誤差最小のインデックス
+                if (nearest_i > smin1 and nearest_i < smax1) or nearest_i == smin or nearest_i == smax:
+                    if nearest_i - smin < nmid-stt: # 小さい側の残りリソースが不足
+                        nearest_i = nearest_i+(nmid-stt)-(nearest_i-smin) 
+                    elif smax-nearest_i < end-nmid: # 大きい側のリソースが不足
+                        nearest_i = nearest_i-(end-nmid)+(smax-nearest_i)
+                    break
+                if smin1==smax1:
+                    print("SAME")
+                if nearest_i == smax1:
+                    print(">",end=="")
+                    (smin1,smax1) = (smax1-1, smax1 + 3) if smax1 + 3 < smax else (smax1-1,smax)
+                elif nearest_i == smin1 :
+                    print("<",end="")
+                    (smin1,smax1) = (smin1 - 3, smin1+1) if smin1 - 3 > smin else (smin,smin1+1)
+                 
+        # nmid番のサンプル点に最も近い点のパラメータは、onpoints の nearest_i 番と確定
         tpara[nmid] = onpoints[nearest_i][0] # 中央点のパラメータが決定
         if nmid-stt >= 1 : # 左にまだ未処理の点があるなら処理する
             refineTparaR(pl,tpara, stt,nmid,smin,nearest_i,onpoints)
@@ -771,7 +813,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
             cpy = [ry[py[i]] for i in range(N+1)]
         
         tpara0 = tpara.copy() # 元の t の推定値
-        tpara = refineTpara(points,(bezresX,bezresY)) # 新たに推定値を求める
+        tpara = refineTparaN(points,(bezresX,bezresY),npoints=npoints) # 新たに推定値を求める
         diffpara = 0
         for i in range(len(tpara)) :
             diffpara += np.sqrt((tpara[i]-tpara0[i])**2) # 変化量の合計
@@ -779,7 +821,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         diffpara = diffpara/len(tpara)
         if debugmode:
             print("TRY",trynum,"diffpara",diffpara,diffpara0)
-        if diffpara < precPara/100*1.03**trynum: # 収束しない時のために、条件を徐々に下げていく
+        if diffpara < precPara/100*1.05**trynum: # 収束しない時のために、条件を徐々に緩めていく
             break
     print("o",end="")
         
@@ -905,7 +947,6 @@ getUpperCoGandCoC(src)
 getstandardShape(src, unitSize=UNIT,showResult=False):
 
 # (13) 輪郭点のサンプリング
-SAMPLE_NUM=16  # 使用するサンプル点の数
 threeLinesSeq(src, showImage =  False)
 
 # (14) ベジエフィッティング
