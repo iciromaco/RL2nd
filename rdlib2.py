@@ -1,3 +1,5 @@
+# 2018.12.2 refineTparaR bug fixed
+
 def assertglobal(params,verbose=False):
     global CONTOURS_APPROX, HARRIS_PARA, CONTOURS_APPROX, SHRINK, \
             HARRIS_PARA, GAUSSIAN_RATE1, GAUSSIAN_RATE2, UNIT, RPARA
@@ -731,7 +733,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         px,py = points[nmid] # 中央のデータの座標
         smin1, smax1 = srange(nmid,stt,end,smin,smax) # 初期サーチ範囲を決める
         if  smin1 == smax1 and stt == end:
-            nearest_i == smin1 # = smax1
+            nearest_i = smin1 # = smax1
         else:
             while True:
                 zahyo = (np.array(onpoints[smin1:smax1]).copy())[:,1:] # onpoints リストの座標部分のみ取り出し            
@@ -820,7 +822,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         print(".",end='')
         diffpara = diffpara/len(tpara)
         if debugmode:
-            print("TRY",trynum,"diffpara",diffpara,diffpara0)
+            print("TRY",trynum,"diffpara",diffpara)
         if diffpara < precPara/100*1.05**trynum: # 収束しない時のために、条件を徐々に緩めていく
             break
     print("o",end="")
@@ -830,6 +832,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     # tpara 制御点   
     
 # (15) 輪郭と軸のサンプルデータ　　data  を３本の3次ベジエ曲線で近似する　（この関数はもう使わないが、古いプログラムのため残す）
+'''
 def fitBezierAndDraw(data,mode=2,showImage=False,img=None,withImage=False):
     [datal,datac,datar] = data
     
@@ -843,7 +846,7 @@ def fitBezierAndDraw(data,mode=2,showImage=False,img=None,withImage=False):
         drawThreeLines(datal,datac,datar,img=img,withImage=withImage,invertImage=True)
     
     return [cpxl,cpyl,bezXl,bezYl,tpl],[cpxc,cpyc,bezXc,bezYc,tpc],[cpxr,cpyr,bezXr,bezYr,tpr]
-
+'''
 # (16) ３本のベジエ曲線を描画する
 def drawThreeLines(ldata,cdata,rdata,img=None,withImage=False,invertImage=False):
 
