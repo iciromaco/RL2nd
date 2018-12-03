@@ -1,4 +1,6 @@
 # 2018.12.2 refineTparaR bug fixed
+# 2018.12.3 srange(n,stt,end,smin,smax) 微修正
+# 2018 12.3 fitBezierCurveN.refineTparaN で設定ポイント数を均等から上端・末端付近は それぞれ n_points, 中央部も n_points 合計3＊n_ポイントとした
 
 def assertglobal(params,verbose=False):
     global CONTOURS_APPROX, HARRIS_PARA, CONTOURS_APPROX, SHRINK, \
@@ -30,7 +32,7 @@ assertglobal(params = {
     'GAUSSIAN_RATE1':0.2, # 先端位置を決める際に使うガウスぼかしの程度を決める係数
     'GAUSSIAN_RATE2':0.1, # 仕上げに形状を整えるためのガウスぼかしの程度を決める係数
     'UNIT':256, # 最終的に長い方の辺をこのサイズになるよう拡大縮小する
-    'RPARA':0.7 # 見込みでサーチ候補から外す割合
+    'RPARA':1.0 # 見込みサーチのサーチ幅全体に対する割合 ３０なら左に３０％右に３０％の幅を初期探索範囲とする
 })
 
 #  汎用の関数
@@ -706,25 +708,32 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     def refineTparaN(pl,linefunc,npoints=50):
         (funcX,funcY) = linefunc # funcX,funcY は t の関数
         # 各サンプル点に最も近い曲線上の点のパラメータ t を求める。
-        trange = np.arange(-0.1,1.1,1/(2*npoints)) # 推定範囲は -0.1 〜　１．１ サンプル数の2倍の候補点を設定
+        # trange = np.arange(-0.1,1.1,1/(2*npoints)) # 推定範囲は -0.1 〜　１．１ サンプル数の2倍の候補点を設定
+        trange0 = np.arange(-0.1,0.25,1/(4*npoints))
+        trange1 = np.arange(0.25,0.75,1/(2*npoints))
+        trange2 = np.arange(0.75,1.1,1/(4*npoints))
+        trange = np.r_[trange0[:-1],trange1,trange2[1:]] # 最初の１/4 と最後の1/4 は近似精度が落ちるので２倍の点を用意する。
         onpoints = [[s,funcX.subs(t,s),funcY.subs(t,s)] for s in trange] # 曲線上の点
         tpara = np.zeros(len(pl),np.float32) # 新しい 推定 t パラメータのリスト用の変数のアロケート
-        refineTparaR(pl,tpara,0,len(pl),0,len(onpoints),onpoints)
+        refineTparaR(pl,tpara,0,len(pl),0,len(onpoints),onpoints) #  ０からなので、len(pl) 番はない　len(onpoints)番もない
         return tpara
 
     # 範囲全体をサーチするのはかなり無駄なので、約６割ぐらいに狭める
     def srange(n,stt,end,smin,smax):
-        if end - stt < 3 : # 残り３点未満なら全域サーチする
-            left,right = smin,smax
+        if RPARA == 1:
+            return smin,smax
         else:
-            srange = smax-smin
-            left = smin + srange*((n-stt)/(end-stt) - RPARA/2)
-            left = smin+(n-stt) if left < smin+(n-stt) else left
-            right = smax - srange*((end-n)/(end-stt) - RPARA/2)
-            right = smax-(end-n) if right > smax-(end-n) else right
-        left = (int(left-0.5)   if int(left-0.5) > smin else smin) # 0.5 は　RPARAとは無関係なので注意
-        right = (int(right+0.5) if int(right+0.5) < smax else smax)
-        return left, right
+            if end - stt < 3 : # 残り３点未満なら全域サーチする
+                left,right = smin,smax
+            else:
+                srange = smax-smin
+                left = smin + srange*((n-stt)/(end-stt) - RPARA/2 if (n-stt)/(end-stt) > RPARA/2 else 0)  
+                left = smin+(n-stt)-1 if left < smin+(n-stt)-1 else left   # n番の左に未定がn-stt個あるので最低その分残してしておかないといけない
+                right = smax - srange*((end-n)/(end-stt) - RPARA/2 if (end-n)/(end-stt) > RPARA/2 else 0)
+                right = smax-(end-n) if right > smax-(end-n) else right
+            left = (int(left-0.5)   if int(left-0.5) > smin else smin) # 0.5 は　RPARAとは無関係なので注意
+            right = (int(right+0.5) if int(right+0.5) < smax else smax)
+            return left, right
        
     #  探索範囲内での対応づけ再帰関数
     # pl 点列、(stt,end) 推定対象範囲（番号）, (smin,smax) パラメータの探索範囲         
@@ -760,7 +769,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         if nmid-stt >= 1 : # 左にまだ未処理の点があるなら処理する
             refineTparaR(pl,tpara, stt,nmid,smin,nearest_i,onpoints)
         if end-(nmid+1) >=1 : # 右にまだ未処理の点があるなら処理する
-            refineTparaR(pl,tpara,nmid+1,end,nearest_i,smax,onpoints) 
+            refineTparaR(pl,tpara,nmid+1,end,nearest_i+1,smax,onpoints) 
                 
     trynum = 0
     while True:
