@@ -1,6 +1,8 @@
 # 2018.12.2 refineTparaR bug fixed
 # 2018.12.3 srange(n,stt,end,smin,smax) 微修正
-# 2018 12.3 fitBezierCurveN.refineTparaN で設定ポイント数を均等から上端・末端付近は それぞれ n_points, 中央部も n_points 合計3＊n_ポイントとした
+# 2018.12.3 fitBezierCurveN.refineTparaN で設定ポイント数を均等から上端・末端付近は それぞれ n_points, 中央部も n_points 合計3＊n_ポイントとした
+# 2018.12.8 getCoG の仕様変更　バウンディングボックスに加えて面積も一緒に返すように変更
+# 2018.12.8 getCoGandTip のガウスぼかしのカーネルサイズの基準を画像の幅からバウンディングボックスの対角線長さと面積から見積もった幅に変更
 
 def assertglobal(params,verbose=False):
     global CONTOURS_APPROX, HARRIS_PARA, CONTOURS_APPROX, SHRINK, \
@@ -242,8 +244,8 @@ def getCoG(img):
     _lnum, _img, cnt, cog = cv2.connectedComponentsWithStats(img)
     areamax = np.argmax(cnt[1:,4])+1 # ０番を除く面積最大値のインデックス
     c_x,c_y = np.round(cog[areamax]) # 重心の位置を丸めて答える
-    x,y,w,h = cnt[areamax,0:4] # 囲む矩形の x0,y0,w,h
-    return c_x,c_y,x,y,w,h
+    # x,y,w,h,areas = cnt[areamax] # 囲む矩形の x0,y0,w,h,面積
+    return c_x,c_y,cnt[areamax]
 
 # (9)重心と先端の位置を返す関数
 #   先端位置はシルエットをガウスぼかしで滑らかにした上で曲率の高い場所
@@ -251,17 +253,19 @@ def getCoGandTip(src, showResult=False, useOldImage=True):
     # useOldImage = True なら元の画像を使って結果を表示、Falseなら滑らかにした画像
     img = makemargin(src) # 作業用のマージンを確保
     img2 = img.copy() # 加工前の状態を保存
+    # （あとでぼかすが、ぼかす前の）元画像の最大白領域の面積とバウンディングボックスを求める
+    c_x,c_y,(_x0,y0,w,h,areas) = getCoG(img)
+    radishwidth = areas/np.sqrt(w*w+h*h) # 面積をバウンディングボックスの対角の長さで割ることで大根の幅を大まかに見積もる
     # ガウスぼかしを適用してシルエットを滑らかにする
-    ksize = int(GAUSSIAN_RATE1*img.shape[1]/2)*2+1 # ぼかし量  元の図形の幅に応じて決める
+    ksize = int(GAUSSIAN_RATE1*radishwidth)*2+1 # ぼかし量  元の図形の幅に応じて決める
     img = cv2.GaussianBlur(img,(ksize,ksize),0) # ガウスぼかしを適用
     # ２値化してシルエットを求め直す
     _ret,img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY) # ２値化
     
     # コア全体の重心の位置を求める
-    c_x,c_y,_x0,y0,_w,h = getCoG(img)
+    c_x,c_y,(_x0,y0,_w,h,areas) = getCoG(img)
     # 全体を囲む矩形の中間の高さ
     h2 = int(h/2)
-    
     # Harris コーナ検出
     himg = np.float32(img)
     himg = cv2.cornerHarris(himg,blockSize=3,ksize=3,k=0.04)
