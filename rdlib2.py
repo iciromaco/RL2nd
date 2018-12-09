@@ -297,6 +297,9 @@ def getCoGandTip(src, showResult=False, useOldImage=True):
         plt.show()
         
     # 結果を返す (c_x,c_y) 重心　　(t_x,t_y)  先端の位置 img2 滑らかになったシルエット画像
+    dx = int(img.shape[1]-src.shape[1])/2
+    dy = int(img.shape[0]-src.shape[0])/2
+    c_x,c_y,t_x,t_y = c_x-dx, c_y-dy, t_x-dx, t_y-dy 
     return c_x,c_y,t_x,t_y
 
 # (10) 回転した上でマージンをカットした画像を返す
