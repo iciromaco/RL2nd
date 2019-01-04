@@ -3,6 +3,8 @@
 # 2018.12.3 fitBezierCurveN.refineTparaN で設定ポイント数を均等から上端・末端付近は それぞれ n_points, 中央部も n_points 合計3＊n_ポイントとした
 # 2018.12.8 getCoG の仕様変更　バウンディングボックスに加えて面積も一緒に返すように変更
 # 2018.12.8 getCoGandTip のガウスぼかしのカーネルサイズの基準を画像の幅からバウンディングボックスの対角線長さと面積から見積もった幅に変更
+# 2018.12.10 refineTparaN を少し修正。openmode でない時、tpara の推定値を０〜１に、openmode の時は -0.1〜1.1 に、候補に１が入っていなかったので含めるように修正
+# 2019.02.04 fitBezierCurveN で経路に沿った距離を計算するコードを自作から findArcLength に置き換え
 
 def assertglobal(params,verbose=False):
     global CONTOURS_APPROX, HARRIS_PARA, CONTOURS_APPROX, SHRINK, \
@@ -699,7 +701,7 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
 
     # 初期の推定パラメータの決定
     ## サンプル点間の差分を求める
-    points1 = points[1:] #  ２つ目から後ろのサンプル点
+    '''points1 = points[1:] #  ２つ目から後ろのサンプル点
     ds = points1-points[:-1] # サンプル点間の差分ベクトル
     la = [np.sqrt(e[0]*e[0]+e[1]*e[1]) for e in ds] # サンプル点間の直線距離のリスト
     axlength = np.sum(la) # 折れ線近似による経路長
@@ -710,15 +712,23 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
     for i in range(len(la)):
         tpara[i+1] = tpara[i]+la[i] # 各サンプル点での積算経路長
     tpara = tpara/axlength # 全経路長で割ってパラメータとする　（０〜１）
-
+    '''
+    tpara = [cv2.arcLength(points[:i+1],False)  for i in range(len(points))]/axlength #上の１１行をこの１行で置き換えた
+    
     #  パラメトリック曲線　linefunc 上で各サンプル点に最寄りの点のパラメータを対応づける
     def refineTparaN(pl,linefunc,npoints=50):
         (funcX,funcY) = linefunc # funcX,funcY は t の関数
         # 各サンプル点に最も近い曲線上の点のパラメータ t を求める。
         # trange = np.arange(-0.1,1.1,1/(2*npoints)) # 推定範囲は -0.1 〜　１．１ サンプル数の2倍の候補点を設定
-        trange0 = np.arange(-0.1,0.25,1/(4*npoints))
+        if openmode:
+            trange0 = np.arange(-0.1,0.25,1/(4*npoints))
+            trange2 = np.arange(0.75,1.1,1/(4*npoints))
+            trange2 = np.r_[trange2,[1.1]]
+        else:
+            trange0 = np.arange(0,0.25,1/(4*npoints))
+            trange2 = np.arange(0.75,1,1/(4*npoints))
+            trange2 = np.r_[trange2,[1]]
         trange1 = np.arange(0.25,0.75,1/(2*npoints))
-        trange2 = np.arange(0.75,1.1,1/(4*npoints))
         trange = np.r_[trange0[:-1],trange1,trange2[1:]] # 最初の１/4 と最後の1/4 は近似精度が落ちるので２倍の点を用意する。
         onpoints = [[s,funcX.subs(t,s),funcY.subs(t,s)] for s in trange] # 曲線上の点
         tpara = np.zeros(len(pl),np.float32) # 新しい 推定 t パラメータのリスト用の変数のアロケート
@@ -838,9 +848,13 @@ def fitBezierCurveN(points,precPara=0.01,N=5, openmode=False,debugmode=False):
         print(".",end='')
         diffpara = diffpara/len(tpara)
         if debugmode:
-            print("TRY",trynum,"diffpara",diffpara)
-        if diffpara < precPara/100*1.05**trynum: # 収束しない時のために、条件を徐々に緩めていく
-            break
+            print("TRY {0} diffpara {1:0.5f} : {2:0.5f}".format(trynum,diffpara*100,precPara*1.05**(0 if trynum <=5 else trynum-5)))
+        if trynum <= 5:
+            if diffpara < precPara/100:
+                break
+        else:
+            if diffpara < precPara/100*1.05**(trynum-5): # 収束しない時のために、条件を徐々に緩めていく
+                break
     print("o",end="")
         
     return True,np.array(cpx),np.array(cpy),bezresX,bezresY,tpara
