@@ -4,7 +4,7 @@
 # 2018.12.8 getCoG の仕様変更　バウンディングボックスに加えて面積も一緒に返すように変更
 # 2018.12.8 getCoGandTip のガウスぼかしのカーネルサイズの基準を画像の幅からバウンディングボックスの対角線長さと面積から見積もった幅に変更
 # 2018.12.10 refineTparaN を少し修正。openmode でない時、tpara の推定値を０〜１に、openmode の時は -0.1〜1.1 に、候補に１が入っていなかったので含めるように修正
-# 2019.02.04 fitBezierCurveN で経路に沿った距離を計算するコードを自作から findArcLength に置き換え
+# 2019.01.04 fitBezierCurveN で経路に沿った距離を計算するコードを自作から findArcLength に置き換え
 
 def assertglobal(params,verbose=False):
     global CONTOURS_APPROX, HARRIS_PARA, CONTOURS_APPROX, SHRINK, \
