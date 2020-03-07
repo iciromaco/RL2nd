@@ -6,6 +6,7 @@
 # 2018.12.10 refineTparaN を少し修正。openmode でない時、tpara の推定値を０〜１に、openmode の時は -0.1〜1.1 に、候補に１が入っていなかったので含めるように修正
 # 2019.01.04 fitBezierCurveN で経路に沿った距離を計算するコードを自作から findArcLength に置き換え
 # 2020.01.28 findContour の仕様変更（与えた画像に関して破壊的処理に変わった、返り値が３つから２つに変わった）への対応
+# 2020.02.07 rotete -> rotate
 
 import cv2
 def cv2findContours34(image, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_NONE):
@@ -315,7 +316,7 @@ def getCoGandTip(src, showResult=False, useOldImage=True):
     return c_x,c_y,t_x,t_y
 
 # (10) 回転した上でマージンをカットした画像を返す
-def roteteAndCutMargin(img,deg,c_x,c_y): 
+def rotateAndCutMargin(img,deg,c_x,c_y): 
     # 非常に稀であるが、回転すると全体が描画領域外に出ることがあるので作業領域を広く確保
     # mat = cv2.getRotationMatrix2D((x0,y0), deg-90, 1.0) # アフィン変換マトリクス
     bigimg = makemargin(img,mr=10) # 作業用のマージンを確保
@@ -394,7 +395,7 @@ def getstandardShape(src, unitSize=UNIT, krate=GAUSSIAN_RATE2,thres = 0.25, setr
     [vx,_vy,_x,_y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
 
     if norotation or np.abs(vx) <= thres and setrotation == 0: # 非回転が指定されているか、回転角の指定がなく、角度が浅いなら回転させない
-        img = roteteAndCutMargin(img,0,0,0)
+        img = rotateAndCutMargin(img,0,0,0)
     else:
         if setrotation != 0: # 回転角が指定されているならその角度
             deg = setrotation
@@ -406,7 +407,7 @@ def getstandardShape(src, unitSize=UNIT, krate=GAUSSIAN_RATE2,thres = 0.25, setr
             if abs(deg) > 45: # 45度を超えるとすると先端位置を誤検出しているに違いないので回転させるのはやめる
                 deg = 0
         # 重心と先端を結ぶラインがY軸となるように回転し余白はカット
-        img = roteteAndCutMargin(img,deg,c_x,c_y)
+        img = rotateAndCutMargin(img,deg,c_x,c_y)
 
     # 大きさを標準化したいが、無駄に根が長いと相対的に重要部分が小さくなるのでまず根を削る
     # 作業用のマージンを確保
@@ -979,7 +980,7 @@ RDreform(img,ksize=5,shrink=SHRINK)
 getCoGandTip(src, showResult=False, useOldImage=True):
 
 # (10) 回転した上でマージンをカットした画像を返す
-def roteteAndCutMargin(img,deg,c_x,c_y)
+def rotateAndCutMargin(img,deg,c_x,c_y)
 
 # (11) 重心から上の重心と、重心位置で断面の中心を返す関数
 #   この関数ではぼかしは行わない。
